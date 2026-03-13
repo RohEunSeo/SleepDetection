@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusRoom · 리포트</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/report.css">
+</head>
+<body>
+
+  <div class="report-inner">
+
+    <!-- 헤더 -->
+    <div class="report-header">
+      <button class="back-btn" onclick="goBack()">← 돌아가기</button>
+      <div>
+        <div class="report-title">집중도 리포트</div>
+        <div class="report-sub">멋쟁이사자처럼 3기 · 전체 수업 기록</div>
+      </div>
+    </div>
+
+    <!-- 요약 카드 -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-icon">📅</div>
+        <div class="summary-val" style="color:#6366f1">4회</div>
+        <div class="summary-label">총 수업 횟수</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">⏱</div>
+        <div class="summary-val" style="color:#10b981">8h 30m</div>
+        <div class="summary-label">총 수업 시간</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">🎯</div>
+        <div class="summary-val" style="color:#f59e0b">81.5%</div>
+        <div class="summary-label">평균 집중도</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon">⚠️</div>
+        <div class="summary-val" style="color:#ef4444">40회</div>
+        <div class="summary-label">총 경고 횟수</div>
+      </div>
+    </div>
+
+    <!-- 세션 테이블 -->
+    <div class="session-table">
+      <div class="session-thead">
+        <span>수업별 기록</span>
+        <button class="csv-btn" onclick="exportCSV()">📥 CSV 내보내기</button>
+      </div>
+      <div id="session-list"></div>
+    </div>
+
+  </div>
+
+  <script src="js/common.js"></script>
+  <script src="js/report.js"></script>
+</body>
+</html>

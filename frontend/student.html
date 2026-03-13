@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusRoom · 수업</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/student.css">
+</head>
+<body>
+
+  <div id="alert-toast" class="alert-toast"></div>
+
+  <!-- 캘리브레이션 오버레이 -->
+  <div id="calibration-overlay" class="calibration-overlay">
+    <div class="calibration-card">
+      <div class="calib-title">👁 캘리브레이션 중...</div>
+      <div class="calib-sub">눈이 잘 보이도록 정면을 바라봐주세요</div>
+      <div class="calib-preview-wrap">
+        <video id="calib-video" autoplay muted playsinline></video>
+        <canvas id="calib-canvas"></canvas>
+      </div>
+      <div class="calib-bar-bg">
+        <div class="calib-bar-fill" id="calib-bar"></div>
+      </div>
+      <div class="calib-percent" id="calib-percent">0%</div>
+    </div>
+  </div>
+
+  <!-- 상단 바 -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="dot"></div>
+      <span class="topbar-title">👁 FocusRoom</span>
+      <span class="badge">멋쟁이사자처럼 3기 · Web 트랙</span>
+    </div>
+    <div class="topbar-right">
+      <div class="detect-badges">
+        <span class="detect-badge" id="badge-eye">👁 졸음 0회</span>
+        <span class="detect-badge" id="badge-yawn">👄 하품 0회</span>
+        <span class="detect-badge" id="badge-head">🙆 고개떨굼 0회</span>
+      </div>
+      <span class="timer" id="timer">🕐 00:00</span>
+    </div>
+  </div>
+
+  <!-- 메인 영역 -->
+  <div class="main-area">
+
+    <!-- 왼쪽: 메인(큰) 화면 70% -->
+    <div class="main-view" id="main-view">
+      <!-- 강사 화면 (기본 메인) -->
+      <div class="tile tile-instructor active-main" id="tile-instructor" onclick="swapToMain('tile-instructor')">
+        <video id="instructor-video" autoplay loop muted playsinline
+               style="display:none; width:100%; height:100%; object-fit:contain; border-radius:inherit;"></video>
+        <div id="instructor-fallback" class="tile-fallback instructor-fallback">
+          <div class="avatar-big">강</div>
+          <span class="cam-label">강사 화면</span>
+        </div>
+        <div class="tile-label">🎓 김강사</div>
+        <div class="live-badge">● LIVE</div>
+      </div>
+    </div>
+
+    <!-- 우측 패널: 작은 타일들 30% -->
+    <div class="right-panel" id="right-panel">
+
+      <!-- 내 카메라 -->
+      <div class="tile tile-me" id="tile-me" onclick="swapToMain('tile-me')">
+        <video id="my-video" autoplay muted playsinline></video>
+        <canvas id="my-canvas"></canvas>
+        <div class="my-status-badge" id="my-status-badge">🟢 정상</div>
+        <div class="tile-label">노은서 (나)</div>
+        <div class="cam-off-overlay" id="cam-off-overlay" style="display:none;">
+          <div class="avatar-sm">은</div>
+          <div class="my-label">카메라 꺼짐</div>
+        </div>
+      </div>
+
+      <!-- 참여자 타일 -->
+      <div class="tile tile-peer" id="tile-peer-1" onclick="swapToMain('tile-peer-1')">
+        <div class="tile-fallback peer-fallback">
+          <div class="peer-avatar">현우</div>
+        </div>
+        <div class="tile-label">최현우</div>
+        <div class="peer-status-dot" style="background:#10b981;"></div>
+      </div>
+
+      <div class="tile tile-peer" id="tile-peer-2" onclick="swapToMain('tile-peer-2')">
+        <div class="tile-fallback peer-fallback">
+          <div class="peer-avatar">채현</div>
+        </div>
+        <div class="tile-label">이채현</div>
+        <div class="peer-status-dot" style="background:#f59e0b;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 하단 컨트롤 -->
+  <div class="controls">
+    <button class="ctrl-btn" id="mic-btn" onclick="toggleMic()">
+      <span class="icon">🎙️</span>
+      <span class="label">마이크 끄기</span>
+    </button>
+    <button class="ctrl-btn" id="cam-btn" onclick="toggleCam()">
+      <span class="icon">📹</span>
+      <span class="label">카메라 끄기</span>
+    </button>
+    <button class="ctrl-btn">
+      <span class="icon">💬</span>
+      <span class="label">채팅</span>
+    </button>
+    <button class="ctrl-btn">
+      <span class="icon">🙋</span>
+      <span class="label">손들기</span>
+    </button>
+    <div class="divider"></div>
+    <button class="leave-btn" onclick="leaveRoom()">수업 나가기</button>
+  </div>
+
+  <!-- MediaPipe CDN (순서 중요!) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+  <script src="js/common.js"></script>
+  <script src="js/student.js"></script>
+</body>
+</html>

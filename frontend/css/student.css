@@ -1,0 +1,415 @@
+/* =============================================
+   student.css - 학생 수업 페이지 스타일
+   ============================================= */
+
+body {
+  background: #0d0d12;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── 캘리브레이션 오버레이 ─────────────────── */
+.calibration-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 8, 15, 0.93);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+
+.calibration-card {
+  text-align: center;
+  padding: 32px 40px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 24px;
+  min-width: 380px;
+}
+
+.calib-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.calib-sub   { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
+
+.calib-preview-wrap {
+  position: relative;
+  width: 300px;
+  height: 180px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #111;
+  border: 1px solid rgba(99,179,237,0.25);
+}
+
+/* video는 숨기고 canvas에 직접 drawImage */
+#calib-video  { display: none; }
+#calib-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.calib-bar-bg {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.calib-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-purple), var(--accent-green));
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
+.calib-percent {
+  font-size: 13px;
+  color: var(--accent-green);
+  font-weight: 600;
+}
+
+/* ── 상단 바 ───────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.02);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+}
+
+.topbar-title { font-weight: 700; font-size: 15px; }
+
+.badge {
+  background: rgba(255,255,255,0.07);
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 감지 상태 뱃지 */
+.detect-badges { display: flex; gap: 6px; }
+
+.detect-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(16,185,129,0.15);
+  border: 1px solid rgba(16,185,129,0.3);
+  color: var(--accent-green);
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+.detect-badge.warn  { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); color: var(--accent-yellow); }
+.detect-badge.alert { background: rgba(239,68,68,0.15);  border-color: rgba(239,68,68,0.3);  color: var(--accent-red); }
+
+.focus-score { text-align: center; }
+.focus-label { font-size: 10px; color: var(--text-muted); }
+.focus-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-green);
+  transition: color 0.5s;
+}
+
+.timer { font-size: 12px; color: var(--text-secondary); }
+
+/* ── 메인 영역 ─────────────────────────────── */
+.main-area {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 왼쪽 큰 화면 - 70% */
+.main-view {
+  flex: 7;
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #111;
+  min-width: 0;
+}
+
+/* 우측 패널 - 30% */
+.right-panel {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* ── 타일 공통 ─────────────────────────────── */
+.tile {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1a1a28;
+  cursor: pointer;
+  transition: outline 0.15s, transform 0.15s;
+  outline: 2px solid transparent;
+}
+
+/* 메인 뷰 안 타일 - 절대위치로 꽉 채움 */
+.main-view > .tile {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  cursor: default;
+  outline: none !important;
+  transform: none !important;
+}
+
+/* 우측 패널 타일들 - flex 균등 분할 */
+.right-panel > .tile {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid rgba(255,255,255,0.07);
+}
+.right-panel > .tile:hover {
+  outline: 2px solid rgba(99,102,241,0.55);
+  transform: scale(1.015);
+}
+
+/* ── 강사 / peer fallback 배경 ─────────────── */
+.tile-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.instructor-fallback {
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+}
+
+.peer-fallback {
+  background: linear-gradient(135deg, #1c1c2e, #1e1e30);
+}
+
+.avatar-big {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.cam-label { color: var(--text-secondary); font-size: 13px; }
+
+/* ── 내 카메라 video/canvas ─────────────────── */
+#my-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scaleX(-1); /* 거울 모드 */
+}
+
+/* 메인 뷰에 올라가도 꽉 채움 - 검정 테두리 없음 */
+.main-view .tile-me #my-video {
+  object-fit: cover;
+}
+
+#my-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* transform 없음 - JS에서 withMirror()로 처리 */
+}
+
+/* ── 타일 레이블 (하단 왼쪽) ────────────────── */
+.tile-label {
+  position: absolute;
+  bottom: 7px;
+  left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(0,0,0,0.58);
+  padding: 2px 8px;
+  border-radius: 5px;
+  z-index: 10;
+  white-space: nowrap;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* LIVE 뱃지 */
+.live-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(239,68,68,0.88);
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  z-index: 10;
+}
+
+/* 상태 뱃지 (내 캠 위 중앙) */
+.my-status-badge {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+  transition: all 0.3s;
+  z-index: 10;
+}
+
+/* 카메라 꺼졌을 때 fallback */
+.cam-off-overlay {
+  position: absolute;
+  inset: 0;
+  background: #1e1e2e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 5;
+}
+
+.avatar-sm {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-green), var(--accent-green2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.my-label { font-size: 11px; color: var(--text-muted); }
+
+/* 졸음 감지 시 빨간 테두리 */
+.tile-me.drowsy-alert {
+  outline: 2px solid rgba(239,68,68,0.85) !important;
+  box-shadow: 0 0 20px rgba(239,68,68,0.3);
+}
+
+/* peer 상태 점 */
+.peer-status-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  z-index: 10;
+  box-shadow: 0 0 6px rgba(255,255,255,0.4);
+}
+
+/* peer 아바타 */
+.peer-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(99,102,241,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+}
+
+/* ── 하단 컨트롤 ────────────────────────────── */
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.01);
+  flex-shrink: 0;
+}
+
+.ctrl-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.07);
+  color: #fff;
+  transition: background 0.2s;
+}
+
+.ctrl-btn:hover { background: rgba(255,255,255,0.11); }
+.ctrl-btn.off   { background: rgba(239,68,68,0.2); }
+
+.ctrl-btn .icon  { font-size: 19px; }
+.ctrl-btn .label { font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
+
+.divider { width: 1px; height: 38px; background: rgba(255,255,255,0.08); margin: 0 5px; }
+
+.leave-btn {
+  padding: 10px 22px;
+  border-radius: 10px;
+  background: rgba(239,68,68,0.82);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.leave-btn:hover { background: rgba(239,68,68,1); }
