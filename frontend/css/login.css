@@ -1,0 +1,123 @@
+/* =============================================
+   login.css - 로그인 페이지 스타일
+   ============================================= */
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(16, 185, 129, 0.12) 0%, transparent 50%),
+    var(--bg-base);
+}
+
+/* 카드 */
+.card {
+  width: 400px;
+  padding: 44px 36px;
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-card);
+  animation: fadeIn 0.3s ease;
+}
+
+/* 로고 */
+.logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.logo-icon {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+
+.logo-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.logo-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 탭 */
+.tab-group {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.tab-btn.active {
+  background: rgba(99, 102, 241, 0.85);
+  color: #fff;
+}
+
+/* 폼 */
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 11px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  border-color: var(--accent-purple);
+}
+
+/* 로그인 버튼 */
+.login-btn {
+  width: 100%;
+  padding: 13px;
+  margin-top: 8px;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple2));
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+  transition: box-shadow 0.2s, opacity 0.2s;
+}
+
+.login-btn:hover {
+  box-shadow: 0 10px 28px rgba(99, 102, 241, 0.55);
+  opacity: 0.92;
+}
+
+/* 푸터 */
+.login-footer {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 11px;
+  margin-top: 18px;
+}

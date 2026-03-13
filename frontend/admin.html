@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusRoom · 관리자</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+  <div id="alert-toast" class="alert-toast"></div>
+
+  <!-- 헤더 -->
+  <div class="admin-header">
+    <div class="admin-title">
+      <h1>👁 FocusRoom</h1>
+      <span class="admin-badge">관리자 대시보드</span>
+    </div>
+    <div class="admin-actions">
+      <button class="report-btn" onclick="goReport()">📊 리포트</button>
+      <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+    </div>
+  </div>
+
+  <!-- 바디 -->
+  <div class="admin-body">
+
+    <!-- 사이드바 -->
+    <div class="sidebar">
+      <div class="section-label">실시간 현황</div>
+      <div class="stat-card">
+        <div class="stat-top">👥 전체 학생</div>
+        <div class="stat-val" style="color:#6366f1" id="stat-total">8</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-top">✅ 집중 중</div>
+        <div class="stat-val" style="color:#10b981" id="stat-focus">5</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-top">🚨 경고 발생</div>
+        <div class="stat-val" style="color:#ef4444" id="stat-alert">3</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-top">📈 평균 집중도</div>
+        <div class="stat-val" style="color:#f59e0b" id="stat-avg">62%</div>
+      </div>
+      <div class="section-label" style="margin-top:4px">⚠️ 경고 학생</div>
+      <div id="alert-list"></div>
+    </div>
+
+    <!-- 메인 그리드 -->
+    <div class="main-grid-area">
+      <div class="filter-row">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="학생 이름 검색..."
+          oninput="filterStudents(this.value)"
+        >
+        <button class="filter-btn active" onclick="setFilter('all', this)">전체</button>
+        <button class="filter-btn"        onclick="setFilter('alert', this)">⚠️ 경고</button>
+        <button class="filter-btn"        onclick="setFilter('normal', this)">✅ 정상</button>
+      </div>
+      <div class="student-grid" id="student-grid"></div>
+    </div>
+
+  </div>
+
+  <script src="js/common.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

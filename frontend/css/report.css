@@ -1,0 +1,197 @@
+/* =============================================
+   report.css - 리포트 페이지 스타일
+   ============================================= */
+
+body {
+  background: #080810;
+  overflow-y: auto;
+}
+
+.report-inner {
+  padding: 28px 36px;
+}
+
+/* 헤더 */
+.report-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.back-btn {
+  padding: 7px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.report-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.report-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* 요약 그리드 */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.summary-card {
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-lg);
+  animation: fadeIn 0.3s ease;
+}
+
+.summary-icon {
+  font-size: 22px;
+  margin-bottom: 9px;
+}
+
+.summary-val {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 세션 테이블 */
+.session-table {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.session-thead {
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.session-thead span {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.csv-btn {
+  padding: 6px 13px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--accent-green);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.csv-btn:hover {
+  background: rgba(16, 185, 129, 0.25);
+}
+
+/* 세션 행 */
+.session-row {
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  transition: background 0.15s;
+}
+
+.session-row:last-child {
+  border-bottom: none;
+}
+
+.session-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.session-date {
+  width: 76px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-info {
+  flex: 1;
+}
+
+.session-title {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.session-duration {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-focus {
+  text-align: center;
+  min-width: 75px;
+}
+
+.session-focus-val {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.session-focus-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.session-alerts {
+  text-align: center;
+  min-width: 55px;
+}
+
+.session-alerts-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-red);
+}
+
+.session-alerts-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.session-bar {
+  width: 110px;
+}
+
+.session-bar-bg {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+.session-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s;
+}

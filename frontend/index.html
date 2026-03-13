@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusRoom · 로그인</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+
+  <div id="alert-toast" class="alert-toast"></div>
+
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">👁</div>
+      <div class="logo-title">FocusRoom</div>
+      <div class="logo-sub">AI 기반 집중도 모니터링 학습 플랫폼</div>
+    </div>
+
+    <div class="tab-group">
+      <button class="tab-btn active" onclick="selectTab('student')">👨‍🎓 학생</button>
+      <button class="tab-btn"        onclick="selectTab('admin')">🛡️ 관리자</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">이메일</label>
+      <input class="form-input" type="email" placeholder="example@likelion.net">
+    </div>
+    <div class="form-group">
+      <label class="form-label">비밀번호</label>
+      <input class="form-input" type="password" placeholder="••••••••">
+    </div>
+
+    <button class="login-btn" onclick="doLogin()">로그인</button>
+    <div class="login-footer">멋쟁이사자처럼 전용 플랫폼 · 무단 접근 금지</div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>
