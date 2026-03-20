@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FocusRoom · 수업</title>
+  <title>Sleep2Wake · 수업</title>
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/student.css">
 </head>
@@ -11,11 +11,101 @@
 
   <div id="alert-toast" class="alert-toast"></div>
 
-  <!-- 캘리브레이션 오버레이 -->
-  <div id="calibration-overlay" class="calibration-overlay">
+  <!-- ══ 온보딩 모달 ══ -->
+  <div id="onboarding-overlay" class="onboarding-overlay">
+    <div class="onboarding-card">
+
+      <div class="ob-header">
+        <div class="ob-logo">
+          <img src="assets/images/likelion-logo.png" alt="멋사" onerror="this.style.display='none'">
+          <span class="ob-logo-text">Sleep2Wake</span>
+        </div>
+        <div class="ob-title">수업 입장 전 확인해주세요</div>
+        <div class="ob-sub">아래 항목을 모두 체크한 후 수업에 참여할 수 있습니다</div>
+      </div>
+
+      <div class="ob-checklist">
+
+        <label class="ob-check-item" id="check-item-1">
+          <div class="ob-check-box" id="check-box-1">
+            <svg class="check-icon" viewBox="0 0 14 14" fill="none">
+              <path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <input type="checkbox" class="ob-checkbox" onchange="handleCheck(this, 1)">
+          <div class="ob-check-content">
+            <div class="ob-check-title">📷 웹캠이 정상 작동하는지 확인했습니다</div>
+            <div class="ob-check-desc">밝은 환경에서 얼굴이 잘 보여야 정확한 감지가 가능합니다</div>
+          </div>
+        </label>
+
+        <label class="ob-check-item" id="check-item-2">
+          <div class="ob-check-box" id="check-box-2">
+            <svg class="check-icon" viewBox="0 0 14 14" fill="none">
+              <path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <input type="checkbox" class="ob-checkbox" onchange="handleCheck(this, 2)">
+          <div class="ob-check-content">
+            <div class="ob-check-title">👁 수업 중 AI가 집중도를 자동 측정합니다</div>
+            <div class="ob-check-desc">졸음·하품·고개 떨굼·자리 이탈을 감지하며, 강사와 매니저에게 통계로 공유됩니다</div>
+          </div>
+        </label>
+
+        <label class="ob-check-item" id="check-item-3">
+          <div class="ob-check-box" id="check-box-3">
+            <svg class="check-icon" viewBox="0 0 14 14" fill="none">
+              <path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <input type="checkbox" class="ob-checkbox" onchange="handleCheck(this, 3)">
+          <div class="ob-check-content">
+            <div class="ob-check-title">🔒 영상은 서버로 전송되지 않습니다</div>
+            <div class="ob-check-desc">AI 분석은 내 브라우저 안에서만 처리되며, 수치 데이터만 서버에 전달됩니다</div>
+          </div>
+        </label>
+
+        <label class="ob-check-item" id="check-item-4">
+          <div class="ob-check-box" id="check-box-4">
+            <svg class="check-icon" viewBox="0 0 14 14" fill="none">
+              <path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <input type="checkbox" class="ob-checkbox" onchange="handleCheck(this, 4)">
+          <div class="ob-check-content">
+            <div class="ob-check-title">📐 입장 직후 캘리브레이션이 진행됩니다</div>
+            <div class="ob-check-desc">약 3초간 정면을 바라봐주세요. 개인별 눈 크기 기준값을 자동으로 측정합니다</div>
+          </div>
+        </label>
+
+      </div>
+
+      <button class="ob-confirm-btn" id="ob-confirm-btn" onclick="confirmOnboarding()" disabled>
+        <span id="ob-btn-text">모두 확인 후 입장 가능합니다</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      <div class="ob-progress-wrap">
+        <div class="ob-progress-bar">
+          <div class="ob-progress-fill" id="ob-progress-fill" style="width:0%"></div>
+        </div>
+        <div class="ob-progress-text" id="ob-progress-text">0 / 4 확인됨</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ 캘리브레이션 오버레이 ══ -->
+  <div id="calibration-overlay" class="calibration-overlay" style="display:none;">
     <div class="calibration-card">
-      <div class="calib-title">👁 캘리브레이션 중...</div>
-      <div class="calib-sub">눈이 잘 보이도록 정면을 바라봐주세요</div>
+      <div class="calib-logo">
+        <img src="assets/images/likelion-logo.png" alt="멋사" onerror="this.style.display='none'">
+        <span class="calib-logo-text">Sleep2Wake</span>
+      </div>
+      <div class="calib-title">👁 집중도 보정 중</div>
+      <div class="calib-sub">정면을 바라봐주세요 — 개인별 눈 크기 기준값을 측정합니다</div>
       <div class="calib-preview-wrap">
         <video id="calib-video" autoplay muted playsinline></video>
         <canvas id="calib-canvas"></canvas>
@@ -27,12 +117,18 @@
     </div>
   </div>
 
-  <!-- 상단 바 -->
+  <!-- ══ 상단 바 ══ -->
   <div class="topbar">
     <div class="topbar-left">
-      <div class="dot"></div>
-      <span class="topbar-title">👁 FocusRoom</span>
-      <span class="badge">멋쟁이사자처럼 3기 · Web 트랙</span>
+      <div class="live-indicator">
+        <div class="live-dot"></div>
+        <span class="live-text">LIVE</span>
+      </div>
+      <div class="topbar-brand">
+        <img src="assets/images/likelion-logo.png" alt="멋사" onerror="this.style.display='none'">
+        <span class="topbar-brand-name">Sleep2Wake</span>
+      </div>
+      <span class="topbar-class">멋쟁이사자처럼 AI 과정</span>
     </div>
     <div class="topbar-right">
       <div class="detect-badges">
@@ -40,72 +136,70 @@
         <span class="detect-badge" id="badge-yawn">👄 하품 0회</span>
         <span class="detect-badge" id="badge-head">🙆 고개떨굼 0회</span>
       </div>
+      <div class="battery-wrap">
+        <span class="battery-label">집중도</span>
+        <div class="battery-icon">
+          <div class="battery-fill" id="battery-fill"></div>
+        </div>
+        <span class="battery-pct" id="battery-pct">100%</span>
+      </div>
       <span class="timer" id="timer">🕐 00:00</span>
     </div>
   </div>
 
-  <!-- 메인 영역 -->
+  <!-- ══ 메인 영역 ══ -->
   <div class="main-area">
-
-    <!-- 왼쪽: 메인(큰) 화면 70% -->
     <div class="main-view" id="main-view">
-      <!-- 강사 화면 (기본 메인) -->
       <div class="tile tile-instructor active-main" id="tile-instructor" onclick="swapToMain('tile-instructor')">
         <video id="instructor-video" autoplay loop muted playsinline
                style="display:none; width:100%; height:100%; object-fit:contain; border-radius:inherit;"></video>
         <div id="instructor-fallback" class="tile-fallback instructor-fallback">
-          <div class="avatar-big">강</div>
-          <span class="cam-label">강사 화면</span>
+          <div class="instructor-placeholder">
+            <img src="assets/images/likelion-logo.png" alt="멋사" onerror="this.style.display='none'">
+            <span class="inst-label">강사 화면 대기 중</span>
+          </div>
         </div>
-        <div class="tile-label">🎓 김강사</div>
-        <div class="live-badge">● LIVE</div>
+        <div class="tile-label">🎓 강사</div>
       </div>
     </div>
 
-    <!-- 우측 패널: 작은 타일들 30% -->
     <div class="right-panel" id="right-panel">
-
-      <!-- 내 카메라 -->
       <div class="tile tile-me" id="tile-me" onclick="swapToMain('tile-me')">
         <video id="my-video" autoplay muted playsinline></video>
         <canvas id="my-canvas"></canvas>
-        <div class="my-status-badge" id="my-status-badge">🟢 정상</div>
-        <div class="tile-label">노은서 (나)</div>
+        <div class="my-status-badge" id="my-status-badge">🟢 집중</div>
+        <div class="tile-label">나</div>
         <div class="cam-off-overlay" id="cam-off-overlay" style="display:none;">
-          <div class="avatar-sm">은</div>
+          <div class="avatar-sm">나</div>
           <div class="my-label">카메라 꺼짐</div>
         </div>
       </div>
-
-      <!-- 참여자 타일 -->
       <div class="tile tile-peer" id="tile-peer-1" onclick="swapToMain('tile-peer-1')">
         <div class="tile-fallback peer-fallback">
           <div class="peer-avatar">현우</div>
         </div>
         <div class="tile-label">최현우</div>
-        <div class="peer-status-dot" style="background:#10b981;"></div>
+        <div class="peer-status-dot" style="background:#22c55e;"></div>
       </div>
-
       <div class="tile tile-peer" id="tile-peer-2" onclick="swapToMain('tile-peer-2')">
         <div class="tile-fallback peer-fallback">
           <div class="peer-avatar">채현</div>
         </div>
         <div class="tile-label">이채현</div>
-        <div class="peer-status-dot" style="background:#f59e0b;"></div>
+        <div class="peer-status-dot" style="background:#22c55e;"></div>
       </div>
-
     </div>
   </div>
 
-  <!-- 하단 컨트롤 -->
+  <!-- ══ 하단 컨트롤 ══ -->
   <div class="controls">
     <button class="ctrl-btn" id="mic-btn" onclick="toggleMic()">
       <span class="icon">🎙️</span>
-      <span class="label">마이크 끄기</span>
+      <span class="label">마이크</span>
     </button>
     <button class="ctrl-btn" id="cam-btn" onclick="toggleCam()">
       <span class="icon">📹</span>
-      <span class="label">카메라 끄기</span>
+      <span class="label">카메라</span>
     </button>
     <button class="ctrl-btn">
       <span class="icon">💬</span>
@@ -119,11 +213,9 @@
     <button class="leave-btn" onclick="leaveRoom()">수업 나가기</button>
   </div>
 
-  <!-- MediaPipe CDN (순서 중요!) -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-
   <script src="js/common.js"></script>
   <script src="js/student.js"></script>
 </body>

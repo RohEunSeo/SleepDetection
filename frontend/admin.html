@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FocusRoom · 관리자</title>
+  <title>Sleep2Wake · 관리자</title>
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/admin.css">
 </head>
@@ -11,60 +11,135 @@
 
   <div id="alert-toast" class="alert-toast"></div>
 
-  <!-- 헤더 -->
-  <div class="admin-header">
-    <div class="admin-title">
-      <h1>👁 FocusRoom</h1>
-      <span class="admin-badge">관리자 대시보드</span>
-    </div>
-    <div class="admin-actions">
-      <button class="report-btn" onclick="goReport()">📊 리포트</button>
-      <button class="logout-btn" onclick="doLogout()">로그아웃</button>
-    </div>
-  </div>
+  <div class="admin-layout">
 
-  <!-- 바디 -->
-  <div class="admin-body">
-
-    <!-- 사이드바 -->
+    <!-- ══ 왼쪽 사이드바 ══ -->
     <div class="sidebar">
-      <div class="section-label">실시간 현황</div>
-      <div class="stat-card">
-        <div class="stat-top">👥 전체 학생</div>
-        <div class="stat-val" style="color:#6366f1" id="stat-total">8</div>
+
+      <div class="sidebar-brand">
+        <img src="assets/images/likelion-logo.png" alt="멋사" class="sidebar-logo"
+             onerror="this.style.display='none'">
+        <div>
+          <div class="sidebar-brand-name">Sleep2Wake</div>
+          <div class="sidebar-brand-sub">관리자 모드</div>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-top">✅ 집중 중</div>
-        <div class="stat-val" style="color:#10b981" id="stat-focus">5</div>
+
+      <div class="sidebar-divider"></div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" onclick="switchTab('overview', this)">
+          <span class="nav-icon">🏠</span>
+          <span class="nav-label">전체 현황</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('monitor', this)">
+          <span class="nav-icon">👁</span>
+          <span class="nav-label">수업 모니터링</span>
+        </button>
+        <button class="nav-item" onclick="switchTab('report', this)">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">리포트</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-divider"></div>
+
+      <!-- 선택된 수업 표시 -->
+      <div class="sidebar-current-room" id="sidebar-current-room" style="display:none">
+        <div class="scr-label">현재 선택된 수업</div>
+        <div class="scr-code" id="scr-code-text">-</div>
+        <div class="scr-name" id="scr-name-text">-</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-top">🚨 경고 발생</div>
-        <div class="stat-val" style="color:#ef4444" id="stat-alert">3</div>
+
+      <!-- 경고 학생 -->
+      <div class="sb-section-label">⚠️ 경고 학생</div>
+      <div class="sb-alert-list" id="sb-alert-list">
+        <div class="sb-no-alert">경고 없음 ✓</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-top">📈 평균 집중도</div>
-        <div class="stat-val" style="color:#f59e0b" id="stat-avg">62%</div>
+
+      <div class="sidebar-footer">
+        <button class="sidebar-logout" onclick="doLogout()">← 나가기</button>
       </div>
-      <div class="section-label" style="margin-top:4px">⚠️ 경고 학생</div>
-      <div id="alert-list"></div>
+
     </div>
 
-    <!-- 메인 그리드 -->
-    <div class="main-grid-area">
-      <div class="filter-row">
-        <input
-          class="search-input"
-          type="text"
-          placeholder="학생 이름 검색..."
-          oninput="filterStudents(this.value)"
-        >
-        <button class="filter-btn active" onclick="setFilter('all', this)">전체</button>
-        <button class="filter-btn"        onclick="setFilter('alert', this)">⚠️ 경고</button>
-        <button class="filter-btn"        onclick="setFilter('normal', this)">✅ 정상</button>
-      </div>
-      <div class="student-grid" id="student-grid"></div>
-    </div>
+    <!-- ══ 메인 영역 ══ -->
+    <div class="admin-content">
 
+      <!-- 수업 선택 탭 바 (전체 공통) -->
+      <div class="room-tab-bar" id="room-tab-bar">
+        <div class="room-tab-label">수업 선택</div>
+        <div class="room-tabs" id="room-tabs"></div>
+        <div class="room-tab-live">
+          <div class="rtl-dot"></div>
+          <span id="rtl-text">실시간 모니터링 중</span>
+        </div>
+      </div>
+
+      <!-- ── 전체 현황 탭 ── -->
+      <div class="tab-panel" id="tab-overview">
+        <div class="panel-title">전체 수업 현황</div>
+        <div class="overview-summary" id="overview-summary"></div>
+        <div class="room-cards" id="room-cards"></div>
+      </div>
+
+      <!-- ── 수업 모니터링 탭 ── -->
+      <div class="tab-panel hidden" id="tab-monitor">
+        <div class="monitor-header">
+          <div>
+            <div class="panel-title" id="monitor-title">수업 모니터링</div>
+            <div class="panel-sub" id="monitor-sub">수업을 선택해주세요</div>
+          </div>
+          <div class="monitor-stats">
+            <div class="mstat"><div class="mstat-val" id="m-total">0</div><div class="mstat-label">전체</div></div>
+            <div class="mstat"><div class="mstat-val" id="m-focus" style="color:#22c55e">0</div><div class="mstat-label">집중</div></div>
+            <div class="mstat"><div class="mstat-val" id="m-alert" style="color:#ef4444">0</div><div class="mstat-label">경고</div></div>
+            <div class="mstat"><div class="mstat-val" id="m-avg" style="color:#FF7B00">0%</div><div class="mstat-label">평균</div></div>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <input class="filter-search" type="text" placeholder="🔍 학생 이름 검색..."
+                 oninput="filterStudents(this.value)">
+          <div class="filter-btns">
+            <button class="filter-btn active" onclick="setFilter('all',this)">전체</button>
+            <button class="filter-btn" onclick="setFilter('alert',this)">⚠️ 경고</button>
+            <button class="filter-btn" onclick="setFilter('normal',this)">✅ 정상</button>
+          </div>
+        </div>
+
+        <div class="student-grid" id="student-grid">
+          <div class="empty-state">
+            <div class="empty-icon">🎓</div>
+            <div class="empty-text">위에서 수업을 선택하면<br>학생 현황이 표시됩니다</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 리포트 탭 ── -->
+      <div class="tab-panel hidden" id="tab-report">
+        <div class="report-header-row">
+          <div>
+            <div class="panel-title">수업 리포트</div>
+            <div class="panel-sub">수업별 집중도 & 참여 기록</div>
+          </div>
+          <button class="csv-btn" onclick="exportCSV()">📥 CSV 내보내기</button>
+        </div>
+
+        <div class="report-sum-row" id="report-sum-row">
+          <div class="rsum-card"><div class="rsum-icon">📅</div><div class="rsum-val" style="color:#a5b4fc">4회</div><div class="rsum-label">총 수업</div></div>
+          <div class="rsum-card"><div class="rsum-icon">⏱</div><div class="rsum-val" style="color:#22c55e">8h 30m</div><div class="rsum-label">총 시간</div></div>
+          <div class="rsum-card"><div class="rsum-icon">🎯</div><div class="rsum-val" style="color:#FF7B00">81.5%</div><div class="rsum-label">평균 집중도</div></div>
+          <div class="rsum-card"><div class="rsum-icon">⚠️</div><div class="rsum-val" style="color:#ef4444">40회</div><div class="rsum-label">총 경고</div></div>
+        </div>
+
+        <div class="session-table">
+          <div class="session-thead">수업 기록</div>
+          <div id="session-list"></div>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <script src="js/common.js"></script>

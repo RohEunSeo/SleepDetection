@@ -3,37 +3,129 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FocusRoom · 로그인</title>
+  <title>Sleep2Wake · 멋쟁이사자처럼</title>
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/login.css">
 </head>
 <body>
 
+  <div class="bg-grid"></div>
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+
   <div id="alert-toast" class="alert-toast"></div>
 
-  <div class="card">
-    <div class="logo">
-      <div class="logo-icon">👁</div>
-      <div class="logo-title">FocusRoom</div>
-      <div class="logo-sub">AI 기반 집중도 모니터링 학습 플랫폼</div>
+  <div class="login-wrapper">
+
+    <!-- 왼쪽 브랜드 -->
+    <div class="brand-side">
+      <div class="brand-logo">
+        <img class="brand-logo-img" src="assets/images/likelion-logo.png" alt="멋쟁이사자처럼"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+        <div class="logo-fallback" style="display:none; width:40px; height:40px; background:linear-gradient(135deg,#FF7B00,#FF8C00); border-radius:10px; align-items:center; justify-content:center; font-size:20px;">🦁</div>
+        <span class="brand-logo-text">멋쟁이사자처럼</span>
+      </div>
+
+      <h1 class="brand-headline">
+        졸음도 이탈도<br>
+        <span class="highlight">AI가 잡아냅니다</span>
+      </h1>
+
+      <p class="brand-desc">
+        비대면 수업 중 수강생의 집중도를 실시간으로 감지하고,
+        강사와 매니저가 한눈에 파악할 수 있는 AI 학습 참여도 관리 플랫폼
+      </p>
+
+      <div class="brand-features">
+        <div class="feat-item">
+          <div class="feat-dot"></div>
+          <span>웹캠 기반 실시간 졸음·이탈 자동 감지</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-dot"></div>
+          <span>브라우저 단독 처리 — 서버 영상 전송 없음</span>
+        </div>
+        <div class="feat-item">
+          <div class="feat-dot"></div>
+          <span>강사·매니저 실시간 대시보드 & 리포트 제공</span>
+        </div>
+      </div>
     </div>
 
-    <div class="tab-group">
-      <button class="tab-btn active" onclick="selectTab('student')">👨‍🎓 학생</button>
-      <button class="tab-btn"        onclick="selectTab('admin')">🛡️ 관리자</button>
+    <!-- 오른쪽 로그인 카드 -->
+    <div class="login-card">
+
+      <div class="card-header">
+        <div class="card-title">수업 입장하기</div>
+        <div class="card-sub">이름과 방 코드를 입력해주세요</div>
+      </div>
+
+      <!-- 역할 탭 -->
+      <div class="tab-group">
+        <button class="tab-btn active" onclick="selectTab('student')">👨‍💻 수강생</button>
+        <button class="tab-btn"        onclick="selectTab('instructor')">🎓 강사</button>
+        <button class="tab-btn"        onclick="selectTab('admin')">🛡️ 매니저</button>
+      </div>
+
+      <!-- 이름 입력 -->
+      <div class="form-group">
+        <label class="form-label">이름</label>
+        <input class="form-input" type="text" id="input-name"
+               placeholder="본인 이름을 입력하세요" maxlength="10"
+               oninput="syncRoomCode()">
+      </div>
+
+      <!-- 방 코드 입력 -->
+      <div class="form-group" id="room-code-group">
+        <label class="form-label">
+          방 코드
+          <span class="form-label-hint">강사에게 공유받은 코드를 입력하세요</span>
+        </label>
+        <div class="room-input-wrap">
+          <input class="form-input room-input" type="text" id="input-room"
+                 placeholder="예: LION-2025"
+                 maxlength="12"
+                 oninput="this.value = this.value.toUpperCase()">
+          <button class="room-paste-btn" onclick="pasteRoomCode()" title="붙여넣기">
+            📋
+          </button>
+        </div>
+        <!-- 빠른 코드 선택 (데모용) -->
+        <div class="quick-codes">
+          <span class="quick-codes-label">데모 코드:</span>
+          <button class="quick-code-btn" onclick="setRoomCode('LION-2025')">LION-2025</button>
+          <button class="quick-code-btn" onclick="setRoomCode('LION-2026')">LION-2026</button>
+        </div>
+      </div>
+
+      <!-- 매니저는 방 코드 불필요 -->
+      <div class="form-group" id="admin-notice" style="display:none;">
+        <div class="admin-notice-box">
+          🛡️ 매니저는 방 코드 없이 전체 수업을 모니터링합니다
+        </div>
+      </div>
+
+      <!-- 강사는 입장 후 방 코드 생성 -->
+      <div class="form-group" id="instructor-notice" style="display:none;">
+        <div class="admin-notice-box" style="border-color:rgba(255,123,0,0.25);background:rgba(255,123,0,0.07);color:var(--orange-400);">
+          🎓 강사는 입장 후 과정 코드를 생성해 학생들에게 공유합니다
+        </div>
+      </div>
+
+      <button class="login-btn" onclick="doLogin()">
+        <span id="login-btn-text">입장하기</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      <div class="login-footer">
+        <span>멋쟁이사자처럼</span> 전용 플랫폼 · 무단 접근 금지
+      </div>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">이메일</label>
-      <input class="form-input" type="email" placeholder="example@likelion.net">
-    </div>
-    <div class="form-group">
-      <label class="form-label">비밀번호</label>
-      <input class="form-input" type="password" placeholder="••••••••">
-    </div>
-
-    <button class="login-btn" onclick="doLogin()">로그인</button>
-    <div class="login-footer">멋쟁이사자처럼 전용 플랫폼 · 무단 접근 금지</div>
   </div>
 
   <script src="js/common.js"></script>

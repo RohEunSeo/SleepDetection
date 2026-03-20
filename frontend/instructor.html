@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sleep2Wake · 강사</title>
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/instructor.css">
+</head>
+<body>
+
+  <div id="alert-toast" class="alert-toast"></div>
+
+  <!-- 헤더 -->
+  <div class="inst-header">
+    <div class="inst-header-left">
+      <div class="live-indicator">
+        <div class="live-dot"></div>
+        <span class="live-text">LIVE</span>
+      </div>
+      <img src="assets/images/likelion-logo.png" alt="멋사" class="inst-logo"
+           onerror="this.style.display='none'">
+      <span class="inst-brand">Sleep2Wake</span>
+      <span class="inst-class" id="inst-class-label">멋쟁이사자처럼 AI 과정</span>
+    </div>
+    <div class="inst-header-right">
+
+      <!-- 과정 코드 생성 / 표시 -->
+      <div class="room-code-area" id="room-code-area">
+        <div class="room-code-display" id="room-code-display" style="display:none">
+          <span class="rcd-label">과정 코드</span>
+          <span class="rcd-code" id="rcd-code-text">-</span>
+          <button class="rcd-copy-btn" onclick="copyRoomCode()">📋 복사</button>
+        </div>
+        <button class="create-room-btn" id="create-room-btn" onclick="createRoom()">
+          + 과정 코드 생성
+        </button>
+      </div>
+
+      <!-- 반 평균 집중도 -->
+      <div class="class-focus-wrap">
+        <span class="class-focus-label">반 평균</span>
+        <div class="class-focus-bar">
+          <div class="class-focus-fill" id="class-focus-fill" style="width:0%"></div>
+        </div>
+        <span class="class-focus-pct" id="class-focus-pct">0%</span>
+      </div>
+
+      <!-- 스트레칭 제안 (집중도 낮을 때만 노출) -->
+      <button class="stretch-btn" id="stretch-btn" onclick="suggestStretch()" style="display:none">
+        🧘 스트레칭 제안
+      </button>
+
+      <span class="inst-timer" id="inst-timer">🕐 00:00</span>
+      <button class="inst-leave-btn" onclick="leaveRoom()">수업 종료</button>
+    </div>
+  </div>
+
+  <!-- 메인 레이아웃 -->
+  <div class="inst-body">
+
+    <!-- 왼쪽: 강사 카메라 or 화면 공유 -->
+    <div class="inst-main-view">
+      <!-- 카메라 영상 -->
+      <video id="inst-video" autoplay muted playsinline></video>
+      <!-- 화면 공유 영상 (화면 공유 중일 때 표시) -->
+      <video id="screen-video" autoplay playsinline style="display:none; width:100%; height:100%; object-fit:contain;"></video>
+      <div class="inst-cam-off" id="inst-cam-off" style="display:none">
+        <div class="inst-avatar" id="inst-avatar-text">강</div>
+        <div class="inst-cam-label">카메라 꺼짐</div>
+      </div>
+      <div class="inst-label" id="inst-main-label">🎓 강사 (나)</div>
+      <div class="live-badge-corner">● LIVE</div>
+      <!-- 화면 공유 중 배지 -->
+      <div class="screen-share-badge" id="screen-share-badge" style="display:none">🖥️ 화면 공유 중</div>
+    </div>
+
+    <!-- 우측: 학생 로테이션 패널 -->
+    <div class="inst-right">
+
+      <div class="inst-stats">
+        <div class="inst-stat-item">
+          <div class="inst-stat-val" id="inst-total">0</div>
+          <div class="inst-stat-label">접속 학생</div>
+        </div>
+        <div class="inst-stat-item">
+          <div class="inst-stat-val" id="inst-focus" style="color:var(--accent-green)">0</div>
+          <div class="inst-stat-label">집중 중</div>
+        </div>
+        <div class="inst-stat-item">
+          <div class="inst-stat-val" id="inst-alert" style="color:var(--accent-red)">0</div>
+          <div class="inst-stat-label">경고</div>
+        </div>
+      </div>
+
+      <div class="inst-student-grid" id="inst-student-grid"></div>
+
+      <div class="rotation-control">
+        <span class="rotation-label">자동 로테이션</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="rotation-toggle" checked onchange="toggleRotation(this.checked)">
+          <span class="toggle-track"></span>
+        </label>
+        <span class="rotation-page" id="rotation-page">1 / 1</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 하단 컨트롤 -->
+  <div class="inst-controls">
+    <button class="ctrl-btn" id="inst-mic-btn" onclick="toggleMic()">
+      <span class="icon">🎙️</span>
+      <span class="label">마이크</span>
+    </button>
+    <button class="ctrl-btn" id="inst-cam-btn" onclick="toggleCam()">
+      <span class="icon">📹</span>
+      <span class="label">카메라</span>
+    </button>
+    <!-- 강사 전용 화면 공유 버튼 -->
+    <button class="ctrl-btn" id="screen-share-btn" onclick="toggleScreenShare()">
+      <span class="icon">🖥️</span>
+      <span class="label">화면 공유</span>
+    </button>
+    <button class="ctrl-btn" onclick="goReport()">
+      <span class="icon">📊</span>
+      <span class="label">리포트</span>
+    </button>
+    <div class="divider"></div>
+    <button class="leave-btn" onclick="leaveRoom()">수업 종료</button>
+  </div>
+
+  <!-- Daily.co SDK -->
+  <script src="https://unpkg.com/@daily-co/daily-js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/instructor.js"></script>
+</body>
+</html>

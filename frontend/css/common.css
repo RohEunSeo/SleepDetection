@@ -1,99 +1,155 @@
 /* =============================================
-   common.css - 공통 스타일 변수 및 기본 설정
+   common.css — Sleep2Wake 공통 스타일
+   멋쟁이사자처럼 전용 비대면 수업 플랫폼
    ============================================= */
 
-/* CSS 변수 (색상 팔레트) */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
 :root {
-  --bg-base:        #08080f;
-  --bg-card:        rgba(255, 255, 255, 0.04);
-  --bg-hover:       rgba(255, 255, 255, 0.07);
+  /* ── 브랜드 컬러 (멋사 오렌지) ── */
+  --orange-50:   #FFF4E6;
+  --orange-100:  #FFE0B2;
+  --orange-400:  #FFA652;
+  --orange-500:  #FF8C00;
+  --orange-600:  #FF7B00;
+  --orange-700:  #E56E00;
 
-  --border-subtle:  rgba(255, 255, 255, 0.06);
-  --border-card:    rgba(255, 255, 255, 0.08);
-  --border-strong:  rgba(255, 255, 255, 0.1);
+  /* ── 배경 ── */
+  --bg-base:       #0A0A0F;
+  --bg-surface:    #111118;
+  --bg-card:       rgba(255, 255, 255, 0.04);
+  --bg-card-hover: rgba(255, 255, 255, 0.07);
+  --bg-overlay:    rgba(10, 10, 15, 0.85);
 
-  --text-primary:   #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.45);
-  --text-muted:     rgba(255, 255, 255, 0.28);
-  --text-faint:     rgba(255, 255, 255, 0.2);
+  /* ── 테두리 ── */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-card:   rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-orange: rgba(255, 123, 0, 0.35);
 
-  --accent-purple:  #6366f1;
-  --accent-purple2: #8b5cf6;
-  --accent-green:   #10b981;
-  --accent-green2:  #059669;
-  --accent-red:     #ef4444;
-  --accent-yellow:  #f59e0b;
+  /* ── 텍스트 ── */
+  --text-primary:   #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-muted:     rgba(255, 255, 255, 0.30);
+  --text-faint:     rgba(255, 255, 255, 0.18);
 
-  --radius-sm:   7px;
-  --radius-md:   11px;
+  /* ── 액센트 ── */
+  --accent-primary:  #FF7B00;
+  --accent-primary2: #FF8C00;
+  --accent-green:    #22C55E;
+  --accent-green2:   #16A34A;
+  --accent-red:      #EF4444;
+  --accent-yellow:   #F59E0B;
+  --accent-blue:     #3B82F6;
+
+  /* ── 형태 ── */
+  --radius-sm:   6px;
+  --radius-md:   10px;
   --radius-lg:   14px;
-  --radius-xl:   24px;
+  --radius-xl:   20px;
+  --radius-2xl:  28px;
   --radius-full: 9999px;
+
+  /* ── 그림자 ── */
+  --shadow-orange: 0 0 32px rgba(255, 123, 0, 0.25);
+  --shadow-card:   0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
-/* 기본 리셋 */
-* {
+/* ── 기본 리셋 ── */
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html { font-size: 16px; }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-base);
   color: var(--text-primary);
   height: 100vh;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* 공통 애니메이션 */
+/* ── 공통 애니메이션 ── */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* 공통 버튼 베이스 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 123, 0, 0.3); }
+  50%       { box-shadow: 0 0 40px rgba(255, 123, 0, 0.6); }
+}
+
+/* ── 공통 버튼 ── */
 button {
   cursor: pointer;
   border: none;
   font-family: inherit;
-  transition: opacity 0.15s, transform 0.1s;
+  transition: all 0.18s ease;
 }
 
-button:active {
-  transform: scale(0.97);
-}
+button:active { transform: scale(0.97); }
 
-/* 공통 input 베이스 */
-input {
+/* ── 공통 input ── */
+input, textarea {
   font-family: inherit;
   outline: none;
   color: var(--text-primary);
 }
 
-/* 공통 토스트 알림 */
+/* ── 오렌지 포커스 링 ── */
+input:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px rgba(255, 123, 0, 0.15);
+}
+
+/* ── 토스트 알림 ── */
 .alert-toast {
   display: none;
   position: fixed;
-  top: 16px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 999;
-  background: rgba(239, 68, 68, 0.96);
-  padding: 13px 22px;
+  z-index: 9999;
+  background: rgba(239, 68, 68, 0.95);
+  padding: 12px 22px;
   border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.5);
+  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.4);
   white-space: nowrap;
-  animation: fadeIn 0.2s ease;
+  animation: fadeUp 0.2s ease;
+  backdrop-filter: blur(10px);
 }
 
-.alert-toast.show {
-  display: block;
+.alert-toast.show { display: block; }
+
+/* ── 공통 스크롤바 ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 123, 0, 0.4);
 }
