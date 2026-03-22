@@ -2,7 +2,7 @@
 // admin.js — Sleep2Wake 관리자 대시보드
 // =============================================
 
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = 'https://sleepdetection-production.up.railway.app/';
 
 // ── 수업 방 데이터 ────────────────────────────
 const rooms = {

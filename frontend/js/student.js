@@ -41,7 +41,7 @@ let prevEyeAlert = false, prevYawnAlert = false, prevHeadAlert = false;
 // 캘리브레이션
 let calibEars = [], isCalib = true, EAR_THRESH = 0.20;
 
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = 'https://sleepdetection-production.up.railway.app/';
 
 // ── 계산 함수 ─────────────────────────────────
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
