@@ -1,123 +1,385 @@
 /* =============================================
-   login.css - 로그인 페이지 스타일
+   login.css — Sleep2Wake 로그인 페이지
    ============================================= */
 
 body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    radial-gradient(ellipse at 20% 50%, rgba(99, 102, 241, 0.18) 0%, transparent 60%),
-    radial-gradient(ellipse at 80% 20%, rgba(16, 185, 129, 0.12) 0%, transparent 50%),
-    var(--bg-base);
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--bg-base);
 }
 
-/* 카드 */
-.card {
-  width: 400px;
-  padding: 44px 36px;
-  background: var(--bg-card);
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--border-card);
-  animation: fadeIn 0.3s ease;
+/* ── 배경 오브 ── */
+.bg-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
 }
 
-/* 로고 */
-.logo {
-  text-align: center;
+.bg-orb-1 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(255,123,0,0.18) 0%, transparent 70%);
+  top: -120px; left: -100px;
+  animation: float1 8s ease-in-out infinite;
+}
+
+.bg-orb-2 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(255,140,0,0.12) 0%, transparent 70%);
+  bottom: -80px; right: -80px;
+  animation: float2 10s ease-in-out infinite;
+}
+
+.bg-orb-3 {
+  width: 250px; height: 250px;
+  background: radial-gradient(circle, rgba(255,166,82,0.1) 0%, transparent 70%);
+  top: 50%; left: 55%;
+  animation: float1 12s ease-in-out infinite reverse;
+}
+
+@keyframes float1 {
+  0%, 100% { transform: translate(0, 0); }
+  50%       { transform: translate(30px, -40px); }
+}
+@keyframes float2 {
+  0%, 100% { transform: translate(0, 0); }
+  50%       { transform: translate(-25px, 30px); }
+}
+
+/* ── 격자 배경 ── */
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(255,123,0,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,123,0,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+}
+
+/* ── 메인 래퍼 ── */
+.login-wrapper {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  width: 100%;
+  max-width: 980px;
+  padding: 0 32px;
+}
+
+/* ── 왼쪽 브랜드 영역 ── */
+.brand-side {
+  flex: 1;
+  animation: fadeUp 0.6s ease both;
+}
+
+.brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   margin-bottom: 32px;
 }
 
-.logo-icon {
-  font-size: 36px;
-  margin-bottom: 10px;
+.brand-logo-img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
 }
 
-.logo-title {
-  font-size: 22px;
+.brand-logo-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--orange-600);
+  letter-spacing: 0.02em;
+}
+
+.brand-headline {
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+
+.brand-headline .highlight {
+  background: linear-gradient(135deg, #FF7B00, #FFB347);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.brand-desc {
+  font-size: 15px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 36px;
+  max-width: 380px;
+}
+
+.brand-features {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feat-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  animation: fadeUp 0.6s ease both;
+}
+
+.feat-item:nth-child(1) { animation-delay: 0.1s; }
+.feat-item:nth-child(2) { animation-delay: 0.2s; }
+.feat-item:nth-child(3) { animation-delay: 0.3s; }
+
+.feat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+/* ── 오른쪽 카드 ── */
+.login-card {
+  width: 400px;
+  flex-shrink: 0;
+  padding: 40px 36px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-2xl);
+  border: 1px solid rgba(255, 123, 0, 0.15);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-card), 0 0 60px rgba(255,123,0,0.06);
+  animation: fadeUp 0.5s ease 0.1s both;
+}
+
+/* 카드 상단 */
+.card-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.card-title {
+  font-size: 20px;
   font-weight: 700;
   margin-bottom: 6px;
 }
 
-.logo-sub {
-  font-size: 13px;
+.card-sub {
+  font-size: 12px;
   color: var(--text-muted);
 }
 
 /* 탭 */
 .tab-group {
   display: flex;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border-radius: var(--radius-md);
   padding: 4px;
   margin-bottom: 24px;
+  border: 1px solid var(--border-subtle);
 }
 
 .tab-btn {
   flex: 1;
   padding: 9px 0;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
+  border-radius: 7px;
+  font-size: 12px;
   font-weight: 500;
-  transition: all 0.2s;
   background: transparent;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
+  transition: all 0.2s;
 }
 
 .tab-btn.active {
-  background: rgba(99, 102, 241, 0.85);
+  background: var(--accent-primary);
   color: #fff;
+  box-shadow: 0 4px 14px rgba(255, 123, 0, 0.4);
 }
 
 /* 폼 */
-.form-group {
-  margin-bottom: 12px;
-}
+.form-group { margin-bottom: 14px; }
 
 .form-label {
   display: block;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-secondary);
-  font-size: 12px;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
 }
 
 .form-input {
   width: 100%;
   padding: 11px 14px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  font-size: 14px;
-  transition: border-color 0.2s;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  transition: all 0.2s;
+  color: var(--text-primary);
 }
 
-.form-input:focus {
-  border-color: var(--accent-purple);
-}
+.form-input::placeholder { color: var(--text-muted); }
 
 /* 로그인 버튼 */
 .login-btn {
   width: 100%;
   padding: 13px;
-  margin-top: 8px;
+  margin-top: 6px;
   border-radius: var(--radius-md);
-  font-size: 15px;
-  font-weight: 600;
-  background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple2));
+  font-size: 14px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #FF7B00, #FF8C00);
   color: #fff;
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
-  transition: box-shadow 0.2s, opacity 0.2s;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 20px rgba(255, 123, 0, 0.45);
+  transition: all 0.2s;
 }
 
 .login-btn:hover {
-  box-shadow: 0 10px 28px rgba(99, 102, 241, 0.55);
-  opacity: 0.92;
+  box-shadow: 0 8px 28px rgba(255, 123, 0, 0.6);
+  transform: translateY(-1px);
+}
+
+/* 데모 로그인 */
+.demo-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.demo-btn {
+  flex: 1;
+  padding: 9px;
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-card);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.demo-btn:hover {
+  background: rgba(255,123,0,0.08);
+  border-color: var(--border-orange);
+  color: var(--orange-400);
 }
 
 /* 푸터 */
 .login-footer {
   text-align: center;
   color: var(--text-faint);
+  font-size: 10px;
+  margin-top: 20px;
+  letter-spacing: 0.04em;
+}
+
+.login-footer span {
+  color: var(--orange-500);
+  font-weight: 600;
+}
+
+/* ── 폼 레이블 힌트 ── */
+.form-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-label-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* ── 방 코드 입력 ── */
+.room-input-wrap {
+  display: flex;
+  gap: 8px;
+}
+
+.room-input {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.room-paste-btn {
+  padding: 0 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.room-paste-btn:hover {
+  background: rgba(255,123,0,0.1);
+  border-color: var(--border-orange);
+}
+
+/* ── 빠른 코드 선택 (데모용) ── */
+.quick-codes {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.quick-codes-label {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.quick-code-btn {
+  padding: 3px 9px;
+  background: rgba(255,123,0,0.08);
+  border: 1px solid rgba(255,123,0,0.2);
+  border-radius: 5px;
   font-size: 11px;
-  margin-top: 18px;
+  font-weight: 600;
+  color: var(--orange-400);
+  letter-spacing: 0.05em;
+  transition: all 0.15s;
+}
+
+.quick-code-btn:hover {
+  background: rgba(255,123,0,0.18);
+  border-color: rgba(255,123,0,0.4);
+}
+
+/* ── 매니저 안내 박스 ── */
+.admin-notice-box {
+  padding: 12px 14px;
+  background: rgba(255,123,0,0.07);
+  border: 1px solid rgba(255,123,0,0.2);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--orange-400);
+  line-height: 1.5;
+}
+
+/* ── 로그인 버튼 flex ── */
+.login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
