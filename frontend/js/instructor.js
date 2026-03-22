@@ -2,7 +2,7 @@
 // instructor.js — Sleep2Wake 강사 화면
 // =============================================
 
-const BACKEND_URL   = 'http://localhost:8000';
+const BACKEND_URL   = 'https://sleepdetection-production.up.railway.app/';
 const ROTATION_SIZE = 4;
 
 let students    = {};
