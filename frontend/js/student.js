@@ -439,7 +439,8 @@ function removePeerTile(sid) {
 // ── WebSocket ─────────────────────────────────
 function connectWebSocket(studentId) {
   try {
-    ws = new WebSocket(`ws://localhost:8000/ws/student/${encodeURIComponent(studentId)}`);
+    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    ws = new WebSocket(`${wsUrl}/ws/student/${encodeURIComponent(studentId)}`);
     ws.onopen  = () => console.log('WS 연결됨');
     ws.onclose = () => setTimeout(() => connectWebSocket(studentId), 3000);
     ws.onerror = e => console.warn('WS 오류:', e);
