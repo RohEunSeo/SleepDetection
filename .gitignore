@@ -15,6 +15,9 @@ runs/
 
 ### Python 필수 ###
 __pycache__/
+*.pyc
+*.pyo
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
