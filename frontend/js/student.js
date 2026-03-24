@@ -52,6 +52,7 @@ function getWsBaseUrl() {
   return BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
 }
 
+// ── 자막 ─────────────────────────────────────
 function renderCaption(text, speaker = '강사') {
   const captionEl = document.getElementById('student-live-caption');
   if (!captionEl) return;
@@ -125,7 +126,6 @@ function drawCalibFrame(lm) {
     calibCtx.drawImage(videoEl, fx * vw, fy * vh, fw * vw, fh * vh, 0, 0, cw, ch);
   } catch { return; }
 
-  // 좌우반전
   const img  = calibCtx.getImageData(0, 0, cw, ch);
   const flip = calibCtx.createImageData(cw, ch);
   for (let y = 0; y < ch; y++) {
@@ -139,7 +139,6 @@ function drawCalibFrame(lm) {
   }
   calibCtx.putImageData(flip, 0, 0);
 
-  // 눈 박스
   [[L_EYE, '#63b3ed', '왼눈'], [R_EYE, '#a78bfa', '오른눈']].forEach(([idx, color, label]) => {
     const exs = idx.map(i => (fx2 - lm[i].x) / fw * cw);
     const eys = idx.map(i => (lm[i].y - fy)   / fh * ch);
@@ -153,7 +152,6 @@ function drawCalibFrame(lm) {
     calibCtx.fillText(label, ex1, Math.max(14, ey1 - 4));
   });
 
-  // 스캔 라인
   const sy = (Date.now() % 1500) / 1500 * ch;
   const g  = calibCtx.createLinearGradient(0, sy - 12, 0, sy + 12);
   g.addColorStop(0, 'rgba(99,179,237,0)');
@@ -206,23 +204,18 @@ function onResults(results) {
   const marVal = calcMAR(lm, MOUTH);
   const tilt   = calcTilt(lm);
 
-  // ── 캘리브레이션 ────────────────────────────
   if (isCalib) {
     calibEars.push(avgEAR);
-
     if (calibCV.width === 0 && calibCV.offsetWidth > 0) {
       calibCV.width  = calibCV.offsetWidth;
       calibCV.height = calibCV.offsetHeight;
     }
-
     const pct   = calibEars.length / CALIB_FRAMES;
     const barEl = document.getElementById('calib-bar');
     const pctEl = document.getElementById('calib-percent');
     if (barEl) barEl.style.width   = (pct * 100) + '%';
     if (pctEl) pctEl.textContent   = Math.round(pct * 100) + '%';
-
     drawCalibFrame(lm);
-
     if (calibEars.length >= CALIB_FRAMES) {
       EAR_THRESH = (calibEars.reduce((a, b) => a + b) / calibEars.length) * 0.75;
       isCalib    = false;
@@ -232,7 +225,6 @@ function onResults(results) {
     return;
   }
 
-  // ── 감지 카운터 ──────────────────────────────
   eyeCount   = avgEAR < EAR_THRESH  ? eyeCount + 1   : 0;
   mouthCount = marVal > MAR_THRESH  ? mouthCount + 1 : 0;
   headCount  = tilt   > HEAD_THRESH ? headCount + 1  : 0;
@@ -246,7 +238,6 @@ function onResults(results) {
   if (headAlert && !prevHeadAlert) { headCnt2++;  updateBadge('head', headCnt2,  '🙆', '고개떨굼'); }
   prevEyeAlert = eyeAlert; prevYawnAlert = yawnAlert; prevHeadAlert = headAlert;
 
-  // ── 바운딩 박스 ──────────────────────────────
   ctx.save(); ctx.scale(-1, 1); ctx.translate(-canvasEl.width, 0);
   [[L_EYE, lEAR], [R_EYE, rEAR]].forEach(([idx, ear]) => {
     drawBox(lm, idx, ear < EAR_THRESH ? '#ef4444' : '#10b981', ear < EAR_THRESH ? 'Closed' : 'Open');
@@ -260,7 +251,6 @@ function onResults(results) {
   ctx.font = '10px monospace';
   ctx.fillText(`EAR:${avgEAR.toFixed(2)}  MAR:${marVal.toFixed(2)}  Tilt:${tilt.toFixed(0)}°`, 6, 14);
 
-  // ── 상태 뱃지 ────────────────────────────────
   const wrap = document.getElementById('tile-me');
   if (eyeAlert) {
     setStatus('😴 졸음 감지', 'rgba(239,68,68,0.8)');
@@ -275,7 +265,6 @@ function onResults(results) {
 
   updateBattery(eyeAlert, yawnAlert, headAlert, false);
 
-  // WebSocket 전송 (1초 1회)
   if (!onResults._t || Date.now() - onResults._t > 1000) {
     const status = eyeAlert ? 'drowsy'
                  : absenceCount >= ABSENCE_FRAMES ? 'absent'
@@ -385,11 +374,11 @@ function leaveRoom() {
   clearInterval(timerInterval);
   videoEl.srcObject?.getTracks().forEach(t => t.stop());
   dailyCall?.leave();
+  if (captionViewerWs) captionViewerWs.close();
   goTo('login');
 }
 
 // ── 온보딩 ───────────────────────────────────
-// student.html에서 onchange="handleCheck(this, 1~4)" 로 호출됨
 function handleCheck(input, idx) {
   const item = document.getElementById('check-item-' + idx);
   if (!item) return;
@@ -416,7 +405,6 @@ function confirmOnboarding() {
   document.getElementById('onboarding-overlay').style.display  = 'none';
   document.getElementById('calibration-overlay').style.display = 'flex';
 
-  // 강사 영상 fallback
   fetch('assets/videos/lecture.mp4', { method: 'HEAD' })
     .then(r => {
       if (r.ok) {
@@ -441,34 +429,92 @@ async function joinDailyRoom(userName, role) {
     );
     if (!res.ok) throw new Error('토큰 발급 실패');
     const { token, room_url } = await res.json();
+
     dailyCall = DailyIframe.createCallObject({ audioSource: true, videoSource: true });
     await dailyCall.join({ url: room_url, token });
+
     dailyCall
-      .on('participant-joined',  updatePeerTiles)
-      .on('participant-updated', updatePeerTiles)
-      .on('participant-left',    e => removePeerTile(e.participant.session_id));
+      .on('participant-joined',  onParticipantJoined)
+      .on('participant-updated', onParticipantUpdated)
+      .on('participant-left',    e => removePeerTile(e.participant.session_id))
+      .on('track-started',       onTrackStarted);
+
     console.log('Daily.co 입장 완료');
   } catch (e) {
-    console.warn('Daily.co 연결 실패 (로컬 테스트):', e.message);
+    console.warn('Daily.co 연결 실패:', e.message);
   }
 }
 
-function updatePeerTiles(e) {
+// [수정] 참여자 입장 시 — 강사 영상 또는 peer 타일 처리
+function onParticipantJoined(e) {
   if (e.participant.local) return;
-  const { session_id: sid, user_name: name = '참여자' } = e.participant;
-  document.querySelectorAll('.peer-avatar').forEach(el => {
-    if (!el.dataset.sid) {
+  const { session_id: sid, user_name: name = '참여자', owner } = e.participant;
+
+  if (owner) {
+    // 강사가 입장한 경우 — instructor-video에 연결
+    attachInstructorVideo(e.participant);
+  } else {
+    // 다른 학생이 입장한 경우 — peer 타일에 이름 표시
+    updatePeerTileLabel(sid, name);
+  }
+}
+
+// [수정] 참여자 업데이트 시 — 트랙 변경 반영
+function onParticipantUpdated(e) {
+  if (e.participant.local) return;
+  const { owner } = e.participant;
+  if (owner) attachInstructorVideo(e.participant);
+}
+
+// [수정] 트랙 시작 시 — video 태그에 실제 영상 연결
+function onTrackStarted(e) {
+  if (e.participant.local) return;
+  if (e.track.kind !== 'video') return;
+
+  if (e.participant.owner) {
+    // 강사 영상
+    const instVideo    = document.getElementById('instructor-video');
+    const instFallback = document.getElementById('instructor-fallback');
+    if (instVideo) {
+      instVideo.srcObject = new MediaStream([e.track]);
+      instVideo.style.display = 'block';
+      if (instFallback) instFallback.style.display = 'none';
+      console.log('강사 영상 연결됨');
+    }
+  }
+}
+
+function attachInstructorVideo(participant) {
+  const videoTrack = participant.tracks?.video?.track;
+  if (!videoTrack) return;
+  const instVideo    = document.getElementById('instructor-video');
+  const instFallback = document.getElementById('instructor-fallback');
+  if (instVideo) {
+    instVideo.srcObject = new MediaStream([videoTrack]);
+    instVideo.style.display = 'block';
+    if (instFallback) instFallback.style.display = 'none';
+  }
+}
+
+function updatePeerTileLabel(sid, name) {
+  const avatars = document.querySelectorAll('.peer-avatar');
+  for (const el of avatars) {
+    if (!el.dataset.sid || el.dataset.sid === sid) {
       el.dataset.sid = sid;
       el.textContent = name.charAt(0);
       const label = el.closest('.tile')?.querySelector('.tile-label');
       if (label) label.textContent = name;
+      break;
     }
-  });
+  }
 }
 
 function removePeerTile(sid) {
   document.querySelectorAll('.peer-avatar').forEach(el => {
-    if (el.dataset.sid === sid) { el.dataset.sid = ''; el.textContent = '?'; }
+    if (el.dataset.sid === sid) {
+      el.dataset.sid = '';
+      el.textContent = '?';
+    }
   });
 }
 
@@ -480,6 +526,22 @@ function connectWebSocket(studentId) {
     ws.onopen  = () => console.log('WS 연결됨');
     ws.onclose = () => setTimeout(() => connectWebSocket(studentId), 3000);
     ws.onerror = e => console.warn('WS 오류:', e);
+
+    // [수정] 강사 수업 종료 신호 수신 → 자동 퇴장
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'room_closed') {
+          showToast('📢 강사가 수업을 종료했습니다. 잠시 후 나갑니다.');
+          setTimeout(() => {
+            dailyCall?.leave();
+            clearInterval(timerInterval);
+            videoEl.srcObject?.getTracks().forEach(t => t.stop());
+            goTo('login');
+          }, 2000);
+        }
+      } catch {}
+    };
   } catch (e) {
     console.warn('WebSocket 연결 실패:', e.message);
   }
@@ -531,7 +593,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (classEl && roomCode) classEl.textContent = '멋쟁이사자처럼 · ' + roomCode;
 
   connectWebSocket(userName);
-  connectCaptionViewer();
+  connectCaptionViewer(roomCode || 'GLOBAL');
 });
 
 window.addEventListener('beforeunload', () => {
