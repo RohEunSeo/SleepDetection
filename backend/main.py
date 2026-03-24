@@ -3,16 +3,20 @@
 # FastAPI 앱 생성 + 라우터 연결 + WebSocket
 # =============================================
 
+import asyncio
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from caption_manager import caption_manager
 from config import ALLOWED_ORIGINS
+from stt_service import stt_service
 from ws_manager import manager
 from session_store import store
 from routers import room, session
 
 app = FastAPI(title="Sleep2Wake API", version="1.0.0")
+DEFAULT_CAPTION_CHANNEL = "GLOBAL"
 
 # ── CORS ────────────────────────────────────
 app.add_middleware(
@@ -85,3 +89,116 @@ async def admin_ws(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect_admin(websocket)
+
+
+@app.websocket("/ws/caption-view/{room_code}")
+async def caption_view_ws(websocket: WebSocket, room_code: str):
+    await caption_manager.connect_viewer(room_code, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        caption_manager.disconnect_viewer(room_code, websocket)
+
+
+@app.websocket("/ws/caption-view")
+async def caption_view_default_ws(websocket: WebSocket):
+    await caption_manager.connect_viewer(DEFAULT_CAPTION_CHANNEL, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        caption_manager.disconnect_viewer(DEFAULT_CAPTION_CHANNEL, websocket)
+
+
+@app.websocket("/ws/caption-stream/{room_code}")
+async def caption_stream_ws(
+    websocket: WebSocket,
+    room_code: str,
+    speaker: str = "강사",
+    ext: str = "webm",
+):
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive()
+            audio_bytes = message.get("bytes")
+            if not audio_bytes:
+                continue
+
+            suffix = f".{ext.lstrip('.')}" if ext else ".webm"
+            text = await asyncio.to_thread(stt_service.transcribe_bytes, audio_bytes, suffix)
+            if not text:
+                continue
+
+            await caption_manager.broadcast(
+                room_code,
+                {
+                    "type": "caption",
+                    "room_code": room_code,
+                    "speaker": speaker,
+                    "text": text,
+                },
+            )
+    except (WebSocketDisconnect, RuntimeError):
+        return
+
+
+@app.websocket("/ws/caption-stream")
+async def caption_stream_default_ws(
+    websocket: WebSocket,
+    speaker: str = "강사",
+    ext: str = "webm",
+):
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive()
+            audio_bytes = message.get("bytes")
+            if not audio_bytes:
+                continue
+
+            suffix = f".{ext.lstrip('.')}" if ext else ".webm"
+            text = await asyncio.to_thread(stt_service.transcribe_bytes, audio_bytes, suffix)
+            if not text:
+                continue
+
+            await caption_manager.broadcast(
+                DEFAULT_CAPTION_CHANNEL,
+                {
+                    "type": "caption",
+                    "room_code": DEFAULT_CAPTION_CHANNEL,
+                    "speaker": speaker,
+                    "text": text,
+                },
+            )
+    except (WebSocketDisconnect, RuntimeError):
+        return
+
+
+@app.websocket("/ws/caption-text")
+async def caption_text_default_ws(
+    websocket: WebSocket,
+    speaker: str = "강사",
+):
+    await websocket.accept()
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            payload = json.loads(raw)
+            text = str(payload.get("text", "")).strip()
+            if not text:
+                continue
+
+            await caption_manager.broadcast(
+                DEFAULT_CAPTION_CHANNEL,
+                {
+                    "type": "caption",
+                    "room_code": DEFAULT_CAPTION_CHANNEL,
+                    "speaker": payload.get("speaker") or speaker,
+                    "text": text,
+                    "final": bool(payload.get("final", False)),
+                },
+            )
+    except (WebSocketDisconnect, RuntimeError):
+        return
