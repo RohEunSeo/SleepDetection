@@ -165,16 +165,37 @@
     </div>
 
     <div class="right-panel" id="right-panel">
+      <!-- 본인 타일 — 항상 맨 위 고정 -->
       <div class="tile tile-me" id="tile-me" onclick="swapToMain('tile-me')">
         <video id="my-video" autoplay muted playsinline></video>
         <canvas id="my-canvas"></canvas>
         <div class="my-status-badge" id="my-status-badge">🟢 집중</div>
-        <div class="tile-label">나</div>
+        <div class="tile-label" id="my-name-label">나</div>
         <div class="cam-off-overlay" id="cam-off-overlay" style="display:none;">
-          <div class="avatar-sm">나</div>
+          <div class="avatar-sm" id="my-avatar-sm">나</div>
           <div class="my-label">카메라 꺼짐</div>
         </div>
       </div>
+      <!-- peer 슬롯 2개 고정 — 비어있으면 대기 중, 입장하면 채워짐 -->
+      <div class="tile tile-peer tile-empty" id="peer-slot-0" onclick="swapToMain('peer-slot-0')">
+        <div class="tile-fallback peer-fallback" id="peer-slot-0-fallback">
+          <div class="peer-waiting">
+            <div class="peer-waiting-icon">👤</div>
+            <div class="peer-waiting-text">대기 중</div>
+          </div>
+        </div>
+        <div class="tile-label" id="peer-slot-0-label" style="display:none;"></div>
+      </div>
+      <div class="tile tile-peer tile-empty" id="peer-slot-1" onclick="swapToMain('peer-slot-1')">
+        <div class="tile-fallback peer-fallback" id="peer-slot-1-fallback">
+          <div class="peer-waiting">
+            <div class="peer-waiting-icon">👤</div>
+            <div class="peer-waiting-text">대기 중</div>
+          </div>
+        </div>
+        <div class="tile-label" id="peer-slot-1-label" style="display:none;"></div>
+      </div>
+      <!-- 3명 초과 시 동적으로 추가되는 컨테이너 -->
       <div id="peer-container"></div>
     </div>
   </div>
