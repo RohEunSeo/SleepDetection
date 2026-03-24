@@ -232,6 +232,28 @@ body {
 .tile-label { position: absolute; bottom: 8px; left: 9px; font-size: 11px; font-weight: 600; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); padding: 3px 9px; border-radius: 5px; z-index: 10; white-space: nowrap; }
 
 .my-status-badge { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 5px; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); white-space: nowrap; transition: all 0.3s; z-index: 10; }
+.live-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: min(78%, 840px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(5, 10, 18, 0.82);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.28);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 12;
+}
+.live-caption.show { opacity: 1; }
 
 .cam-off-overlay { position: absolute; inset: 0; background: #13131f; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; z-index: 5; }
 .avatar-sm { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #FF7B00, #FFA652); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }

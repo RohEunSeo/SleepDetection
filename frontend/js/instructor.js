@@ -2,7 +2,10 @@
 // instructor.js — Sleep2Wake 강사 화면
 // =============================================
 
-const BACKEND_URL   = 'https://sleepdetection-production.up.railway.app';
+const IS_LOCAL_HOST = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const BACKEND_URL   = IS_LOCAL_HOST
+  ? 'http://127.0.0.1:8000'
+  : 'https://sleepdetection-production.up.railway.app';
 const ROTATION_SIZE = 4;
 
 let students    = {};
@@ -18,6 +21,305 @@ let dailyCall = null;
 
 // ── WebSocket ────────────────────────────────
 let ws = null;
+let captionViewerWs = null;
+let captionUploaderWs = null;
+let captionTextWs = null;
+let captionRecorder = null;
+let localMediaStream = null;
+let currentRoomCode = 'GLOBAL';
+let captionClearTimer = null;
+let captionAudioContext = null;
+let captionSourceNode = null;
+let captionProcessorNode = null;
+let captionSampleRate = 16000;
+let captionPcmChunks = [];
+let captionFlushTimer = null;
+let captionRecognition = null;
+let captionRecognitionRunning = false;
+let lastCaptionSentText = '';
+const CAPTION_FLUSH_MS = 1000;
+const CAPTION_MIN_RMS = 0.015;
+const CAPTION_MIN_SAMPLES = 4096;
+
+function getWsBaseUrl() {
+  return BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+}
+
+function getCaptionMimeType() {
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  return candidates.find(type => window.MediaRecorder?.isTypeSupported?.(type)) || '';
+}
+
+function getCaptionExtension(mimeType) {
+  if (!mimeType) return 'webm';
+  if (mimeType.includes('mp4')) return 'mp4';
+  if (mimeType.includes('ogg')) return 'ogg';
+  return 'webm';
+}
+
+function getCaptionAudioStream() {
+  if (!localMediaStream) return null;
+  const audioTracks = localMediaStream.getAudioTracks();
+  if (!audioTracks.length) return null;
+  return new MediaStream(audioTracks);
+}
+
+function mergeFloat32Chunks(chunks) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Float32Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+function calculateRms(samples) {
+  if (!samples.length) return 0;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) {
+    sum += samples[i] * samples[i];
+  }
+  return Math.sqrt(sum / samples.length);
+}
+
+function encodeWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  function writeString(offset, value) {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  }
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const sample = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    offset += 2;
+  }
+
+  return buffer;
+}
+
+async function flushCaptionPcm() {
+  if (!captionPcmChunks.length) return;
+  if (!captionUploaderWs || captionUploaderWs.readyState !== WebSocket.OPEN) return;
+
+  const merged = mergeFloat32Chunks(captionPcmChunks);
+  captionPcmChunks = [];
+  if (merged.length < CAPTION_MIN_SAMPLES) return;
+  const rms = calculateRms(merged);
+  if (rms < CAPTION_MIN_RMS) return;
+  const wavBuffer = encodeWav(merged, captionSampleRate);
+  console.log('자막 chunk:', { type: 'audio/wav', size: wavBuffer.byteLength, rms: rms.toFixed(4) });
+  captionUploaderWs.send(wavBuffer);
+}
+
+async function startPcmCaptionStream(audioStream) {
+  captionAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: captionSampleRate });
+  await captionAudioContext.resume();
+
+  captionSampleRate = captionAudioContext.sampleRate || captionSampleRate;
+  captionSourceNode = captionAudioContext.createMediaStreamSource(audioStream);
+  captionProcessorNode = captionAudioContext.createScriptProcessor(4096, 1, 1);
+
+  captionProcessorNode.onaudioprocess = (event) => {
+    const input = event.inputBuffer.getChannelData(0);
+    captionPcmChunks.push(new Float32Array(input));
+  };
+
+  captionSourceNode.connect(captionProcessorNode);
+  captionProcessorNode.connect(captionAudioContext.destination);
+  captionFlushTimer = setInterval(() => {
+    flushCaptionPcm().catch((error) => console.warn('자막 PCM flush 실패:', error));
+  }, CAPTION_FLUSH_MS);
+}
+
+function renderCaption(text, speaker = '강사') {
+  const captionEl = document.getElementById('inst-live-caption');
+  if (!captionEl) return;
+  captionEl.textContent = `${speaker}: ${text}`;
+  captionEl.classList.add('show');
+  clearTimeout(captionClearTimer);
+  captionClearTimer = setTimeout(() => {
+    captionEl.classList.remove('show');
+    captionEl.textContent = '';
+  }, 5000);
+}
+
+function getSpeechRecognitionCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function connectCaptionTextWs() {
+  if (captionTextWs) captionTextWs.close();
+  const userName = sessionStorage.getItem('userName') || '강사';
+  captionTextWs = new WebSocket(`${getWsBaseUrl()}/ws/caption-text?speaker=${encodeURIComponent(userName)}`);
+}
+
+function sendCaptionText(text, isFinal = false) {
+  if (!text || !captionTextWs || captionTextWs.readyState !== WebSocket.OPEN) return;
+  const normalized = text.trim();
+  if (!normalized) return;
+  if (normalized === lastCaptionSentText && !isFinal) return;
+  lastCaptionSentText = normalized;
+
+  captionTextWs.send(JSON.stringify({
+    text: normalized,
+    final: isFinal,
+    speaker: sessionStorage.getItem('userName') || '강사',
+  }));
+}
+
+function stopBrowserCaptionRecognition() {
+  if (!captionRecognition) return;
+  captionRecognition.onresult = null;
+  captionRecognition.onerror = null;
+  captionRecognition.onend = null;
+  if (captionRecognitionRunning) captionRecognition.stop();
+  captionRecognitionRunning = false;
+  captionRecognition = null;
+}
+
+function startBrowserCaptionRecognition() {
+  const RecognitionCtor = getSpeechRecognitionCtor();
+  if (!RecognitionCtor) return false;
+
+  connectCaptionTextWs();
+  captionRecognition = new RecognitionCtor();
+  captionRecognition.lang = 'ko-KR';
+  captionRecognition.continuous = true;
+  captionRecognition.interimResults = true;
+  captionRecognition.maxAlternatives = 1;
+
+  captionRecognition.onresult = (event) => {
+    let interimText = '';
+    let finalText = '';
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0]?.transcript?.trim() || '';
+      if (!transcript) continue;
+      if (event.results[i].isFinal) finalText += `${transcript} `;
+      else interimText += `${transcript} `;
+    }
+
+    const interimNormalized = interimText.trim();
+    const finalNormalized = finalText.trim();
+
+    if (interimNormalized) {
+      renderCaption(interimNormalized);
+      sendCaptionText(interimNormalized, false);
+    }
+    if (finalNormalized) {
+      renderCaption(finalNormalized);
+      sendCaptionText(finalNormalized, true);
+    }
+  };
+
+  captionRecognition.onerror = (event) => {
+    console.warn('브라우저 자막 인식 오류:', event.error);
+  };
+
+  captionRecognition.onend = () => {
+    captionRecognitionRunning = false;
+    if (!micOn) return;
+    try {
+      captionRecognition.start();
+      captionRecognitionRunning = true;
+    } catch {}
+  };
+
+  try {
+    captionRecognition.start();
+    captionRecognitionRunning = true;
+    console.log('브라우저 자막 인식 시작');
+    return true;
+  } catch (error) {
+    console.warn('브라우저 자막 인식 시작 실패:', error);
+    captionRecognition = null;
+    return false;
+  }
+}
+
+function connectCaptionViewer(roomCode = 'GLOBAL') {
+  if (captionViewerWs) captionViewerWs.close();
+  const path = roomCode === 'GLOBAL'
+    ? `${getWsBaseUrl()}/ws/caption-view`
+    : `${getWsBaseUrl()}/ws/caption-view/${encodeURIComponent(roomCode)}`;
+  captionViewerWs = new WebSocket(path);
+  captionViewerWs.onmessage = (event) => {
+    const payload = JSON.parse(event.data);
+    if (payload.type === 'caption' && payload.text) {
+      renderCaption(payload.text, payload.speaker || '강사');
+    }
+  };
+}
+
+function stopCaptionStreaming() {
+  if (captionRecorder && captionRecorder.state !== 'inactive') captionRecorder.stop();
+  captionRecorder = null;
+  if (captionUploaderWs) captionUploaderWs.close();
+  captionUploaderWs = null;
+  if (captionTextWs) captionTextWs.close();
+  captionTextWs = null;
+  stopBrowserCaptionRecognition();
+  if (captionFlushTimer) clearInterval(captionFlushTimer);
+  captionFlushTimer = null;
+  captionPcmChunks = [];
+  try { captionProcessorNode?.disconnect(); } catch {}
+  try { captionSourceNode?.disconnect(); } catch {}
+  captionProcessorNode = null;
+  captionSourceNode = null;
+  if (captionAudioContext) {
+    captionAudioContext.close().catch(() => {});
+    captionAudioContext = null;
+  }
+}
+
+function connectCaptionUploader(roomCode = 'GLOBAL') {
+  const audioStream = getCaptionAudioStream();
+  if (!audioStream) return;
+
+  stopCaptionStreaming();
+
+  if (startBrowserCaptionRecognition()) {
+    console.log('자막 경로: browser speech recognition');
+    return;
+  }
+
+  const userName = sessionStorage.getItem('userName') || '강사';
+  const mimeType = 'audio/wav';
+  const ext = 'wav';
+  const path = roomCode === 'GLOBAL'
+    ? `${getWsBaseUrl()}/ws/caption-stream?speaker=${encodeURIComponent(userName)}&ext=${encodeURIComponent(ext)}`
+    : `${getWsBaseUrl()}/ws/caption-stream/${encodeURIComponent(roomCode)}?speaker=${encodeURIComponent(userName)}&ext=${encodeURIComponent(ext)}`;
+  captionUploaderWs = new WebSocket(path);
+  captionUploaderWs.binaryType = 'arraybuffer';
+  captionUploaderWs.onopen = () => {
+    console.log('자막 recorder mimeType:', mimeType || '(browser default)', 'ext:', ext);
+    console.log('자막 경로: wav fallback');
+    startPcmCaptionStream(audioStream).catch((error) => {
+      console.warn('자막 PCM 녹음 시작 실패:', error);
+    });
+  };
+}
 
 function connectWS() {
   try {
@@ -165,6 +467,7 @@ async function createRoom() {
 }
 
 function _applyRoomCode(code) {
+  currentRoomCode = code;
   document.getElementById('rcd-code-text').textContent  = code;
   document.getElementById('room-code-display').style.display = 'flex';
   document.getElementById('create-room-btn').style.display   = 'none';
@@ -287,8 +590,10 @@ function handleTrackStopped(e) {
 async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localMediaStream = stream;
     document.getElementById('inst-video').srcObject = stream;
     document.getElementById('inst-cam-off').style.display = 'none';
+    if (currentRoomCode) connectCaptionUploader(currentRoomCode);
   } catch {
     document.getElementById('inst-cam-off').style.display = 'flex';
     document.getElementById('inst-video').style.display   = 'none';
@@ -298,6 +603,12 @@ async function startCamera() {
 function toggleMic() {
   micOn = !micOn;
   if (dailyCall) dailyCall.setLocalAudio(micOn);
+  localMediaStream?.getAudioTracks().forEach(track => { track.enabled = micOn; });
+  if (!micOn) {
+    stopBrowserCaptionRecognition();
+  } else if (!captionRecognitionRunning && !captionUploaderWs) {
+    startBrowserCaptionRecognition();
+  }
   const btn = document.getElementById('inst-mic-btn');
   btn.querySelector('.icon').textContent  = micOn ? '🎙️' : '🔇';
   btn.querySelector('.label').textContent = micOn ? '마이크' : '음소거';
@@ -328,6 +639,9 @@ function startTimer() {
 
 function leaveRoom() {
   dailyCall?.leave();
+  stopCaptionStreaming();
+  if (captionViewerWs) captionViewerWs.close();
+  localMediaStream?.getTracks().forEach(track => track.stop());
   clearInterval(timerInterval);
   clearInterval(rotInterval);
   goTo('login');
@@ -351,11 +665,15 @@ window.addEventListener('DOMContentLoaded', () => {
   startCamera();
   startTimer();
   connectWS();
+  connectCaptionViewer();
   startRotation();
 });
 
 window.addEventListener('beforeunload', () => {
   dailyCall?.leave();
+  stopCaptionStreaming();
+  if (captionViewerWs) captionViewerWs.close();
+  localMediaStream?.getTracks().forEach(track => track.stop());
   clearInterval(timerInterval);
   clearInterval(rotInterval);
 });

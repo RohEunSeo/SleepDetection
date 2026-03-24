@@ -56,6 +56,28 @@ body { background: #080810; display: flex; flex-direction: column; height: 100vh
 .inst-cam-label { font-size: 13px; color: var(--text-muted); }
 .inst-label { position: absolute; bottom: 10px; left: 12px; font-size: 12px; font-weight: 600; background: rgba(0,0,0,0.65); backdrop-filter: blur(6px); padding: 4px 10px; border-radius: 6px; }
 .live-badge-corner { position: absolute; top: 12px; right: 12px; background: rgba(239,68,68,0.88); padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 700; }
+.live-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: min(78%, 840px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(5, 10, 18, 0.82);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.28);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 12;
+}
+.live-caption.show { opacity: 1; }
 
 /* ══ 우측 패널 ══ */
 .inst-right {
