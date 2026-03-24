@@ -17,11 +17,10 @@ main.py - FocusRoom 진입점
   q   → 종료 + 세션 요약 저장
 
 [구조]
-    1. 초기화 (FaceMesh, Detector, Mission, DataCollector, Cap)
+    1. 초기화 (FaceMesh, Detector, DataCollector, Cap)
     2. EAR 캘리브레이션 (3초, 90프레임)
     3. 메인 루프
        - DrowsinessDetector.update() → 상태 판단
-       - StretchMission.update()     → 미션 처리
        - DataCollector.handle_key()  → 데이터 수집
        - draw_overlay()              → 화면 출력
 """
@@ -197,8 +196,7 @@ def draw_overlay(frame, result, pts, fps, proc_ms, data_mode=False):
                  (10, fh-130), color=(180, 0, 180), font_size="small")
         put_text(frame,
                  f"하품:{result['yawn_count']}회  "
-                 f"졸음점수:{result['drowsiness_score']}%  "
-                 f"참여점수:{pts}pt",
+                 f"졸음점수:{result['drowsiness_score']}%  ",
                  (10, fh-95), color=(50, 50, 50), font_size="small")
         put_text(frame,
                  f"WARNING 누적:{result['warning_count']}회",
@@ -336,7 +334,7 @@ def main():
     # ── 캘리브레이션 ────────────────────────────────────────────
     ear_thresh, baseline = run_calibration(cap, face_mesh, None)
 
-    # ── Detector / Mission / DataCollector 초기화 ───────────────
+    # ── Detector / DataCollector 초기화 ───────────────
     t_start   = time.perf_counter()
     detector  = DrowsinessDetector(
         ear_thresh=ear_thresh,
@@ -394,7 +392,7 @@ def main():
         if current_mode == MODE_TEST:
             frame = draw_overlay(
                 frame, result,
-                pts=mission.participation_score,
+                pts=0,
                 fps=fps,
                 proc_ms=proc_ms,
                 data_mode=False      # 전체 UI
