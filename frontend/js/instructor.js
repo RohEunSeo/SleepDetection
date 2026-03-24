@@ -225,47 +225,70 @@ function renderStudentGrid() {
   const grid = document.getElementById('inst-student-grid');
   if (!grid) return;
 
-  grid.innerHTML = slice.map(s => {
+  // [수정] innerHTML 통째 교체 대신 DOM diff — 기존 타일 재사용해서 깜빡임 방지
+  const existingIds = new Set([...grid.querySelectorAll('.inst-student-tile[id]')].map(el => el.id));
+  const neededIds   = new Set(slice.map(s => `tile-${s.student_id}`));
+
+  // 필요없는 타일 제거
+  existingIds.forEach(id => {
+    if (!neededIds.has(id)) document.getElementById(id)?.remove();
+  });
+
+  // 빈 슬롯 제거
+  grid.querySelectorAll('.inst-student-tile:not([id])').forEach(el => el.remove());
+
+  // 학생 타일 추가/업데이트
+  slice.forEach((s, idx) => {
+    const sid      = s.student_id;
     const penalty  = (s.drowsy_cnt || 0) * 10 + (s.yawn_cnt || 0) * 5 + (s.head_cnt || 0) * 5;
     const score    = Math.max(0, 100 - penalty);
     const barClass = score <= 30 ? 'alert' : score <= 60 ? 'warn' : '';
     const bgColor  = s.status === 'drowsy' || s.status === 'absent' ? 'rgba(239,68,68,0.25)' : 'rgba(255,123,0,0.2)';
     const initial  = (s.name || s.student_id || '?').charAt(0);
-    const sid      = s.student_id;
 
-    return `
-    <div class="inst-student-tile" id="tile-${sid}">
-      <video class="inst-student-video" id="video-${sid}" autoplay muted playsinline
-             style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;"></video>
-      <div class="inst-student-fallback" id="fallback-${sid}">
-        <div class="inst-peer-avatar" style="background:${bgColor}">${initial}</div>
-        <div class="inst-peer-name">${s.name || s.student_id}</div>
-      </div>
-      <div class="tile-battery-overlay">
-        <div class="tile-battery-icon">
-          <div class="tile-battery-bar ${barClass}" style="width:${score}%"></div>
+    let tile = document.getElementById(`tile-${sid}`);
+    if (!tile) {
+      // 새 타일 생성
+      tile = document.createElement('div');
+      tile.className = 'inst-student-tile';
+      tile.id = `tile-${sid}`;
+      tile.innerHTML = `
+        <video class="inst-student-video" id="video-${sid}" autoplay muted playsinline
+               style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;"></video>
+        <div class="inst-student-fallback" id="fallback-${sid}">
+          <div class="inst-peer-avatar" style="background:${bgColor}">${initial}</div>
+          <div class="inst-peer-name">${s.name || s.student_id}</div>
         </div>
-      </div>
-      <div class="tile-student-label">${s.name || s.student_id}</div>
-    </div>`;
-  }).join('');
+        <div class="tile-battery-overlay">
+          <div class="tile-battery-icon">
+            <div class="tile-battery-bar ${barClass}" id="bar-${sid}" style="width:${score}%"></div>
+          </div>
+        </div>
+        <div class="tile-student-label">${s.name || s.student_id}</div>`;
+      grid.appendChild(tile);
+      // 트랙 연결
+      if (participantVideoMap[sid]) attachStudentVideo(sid, participantVideoMap[sid]);
+    } else {
+      // 기존 타일 업데이트 (배터리만 갱신, video 태그 건드리지 않음)
+      const bar = document.getElementById(`bar-${sid}`);
+      if (bar) { bar.style.width = `${score}%`; bar.className = `tile-battery-bar ${barClass}`; }
+      const fallback = document.getElementById(`fallback-${sid}`);
+      if (fallback) fallback.querySelector('.inst-peer-avatar')?.setAttribute('style', `background:${bgColor}`);
+    }
+  });
 
-  // 비어있는 슬롯
+  // 빈 슬롯 채우기
   const empty = ROTATION_SIZE - slice.length;
   for (let i = 0; i < empty; i++) {
-    grid.innerHTML += `
-    <div class="inst-student-tile">
+    const el = document.createElement('div');
+    el.className = 'inst-student-tile';
+    el.innerHTML = `
       <div class="inst-student-fallback">
         <div style="font-size:20px;opacity:0.2">👤</div>
         <div class="inst-peer-name" style="opacity:0.3">대기 중</div>
-      </div>
-    </div>`;
+      </div>`;
+    grid.appendChild(el);
   }
-
-  // [수정] 이미 받아둔 Daily.co 트랙 다시 연결
-  Object.entries(participantVideoMap).forEach(([sid, track]) => {
-    attachStudentVideo(sid, track);
-  });
 }
 
 // [수정] 학생 video 태그에 트랙 연결하는 헬퍼
