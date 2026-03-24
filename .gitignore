@@ -1,4 +1,4 @@
-### 가중치 및 데이터 ###
+### 모델 / 가중치 ###
 *.pt
 *.pth
 *.weights
@@ -6,52 +6,38 @@
 *.onnx
 *.pb
 
+### 환경 변수 ###
 .env
 
-# 데이터셋 폴더가 있다면 이름을 추가하세요 
+### 데이터 ###
 data/
-# 학습 로그 
 runs/
 
-### Python 필수 ###
+### Python ###
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.flakes/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-### 가상환경 (Virtual Environments) ###
+### 가상환경 ###
 .venv/
 venv/
 env/
 ENV/
-bin/
-lib/
-Include/
-Scripts/
 
-### IDE 및 설정 ###
+### 빌드 / 패키지 ###
+build/
+dist/
+*.egg-info/
+
+### IDE ###
 .vscode/
 .idea/
+
+### OS ###
 .DS_Store
 Thumbs.db
 
-### 기타 대용량 파일 ###
+### 기타 ###
 *.zip
 *.tar.gz
 *.rar

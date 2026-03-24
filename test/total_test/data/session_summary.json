@@ -1,0 +1,965 @@
+{
+  "session_start": "2026-03-24 10:32:46",
+  "session_end": "2026-03-24 10:45:04",
+  "total_sec": 737.3,
+  "state_durations_sec": {
+    "FOCUSED": 262.3,
+    "DISTRACTED": 16.9,
+    "WARNING": 8.4,
+    "DROWSY": 449.7,
+    "ABSENT": 0.0
+  },
+  "state_ratios_pct": {
+    "FOCUSED": 35.6,
+    "DISTRACTED": 2.3,
+    "WARNING": 1.1,
+    "DROWSY": 61.0,
+    "ABSENT": 0.0
+  },
+  "this_session_captures": {
+    "FOCUSED": 0,
+    "DISTRACTED": 0,
+    "WARNING": 0,
+    "DROWSY": 0,
+    "ABSENT": 0
+  },
+  "total_captures_in_dir": {
+    "FOCUSED": 0,
+    "DISTRACTED": 0,
+    "WARNING": 0,
+    "DROWSY": 0,
+    "ABSENT": 0
+  },
+  "events": [
+    {
+      "timestamp": "2026-03-24T10:32:56.353229",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 9.6,
+      "ear": 0.578,
+      "perclos": 0.037,
+      "mar": 0.52,
+      "moe": 0.9
+    },
+    {
+      "timestamp": "2026-03-24T10:32:57.093280",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.75,
+      "ear": 0.5133753092319306,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:32:57.245091",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 0.15,
+      "ear": 0.499,
+      "perclos": 0.034,
+      "mar": 0.535,
+      "moe": 1.07
+    },
+    {
+      "timestamp": "2026-03-24T10:32:57.392536",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.15,
+      "ear": 0.5189021311939668,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:32:57.542440",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 0.14,
+      "ear": 0.447,
+      "perclos": 0.034,
+      "mar": 0.509,
+      "moe": 1.14
+    },
+    {
+      "timestamp": "2026-03-24T10:32:57.965759",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.43,
+      "ear": 0.345,
+      "perclos": 0.032,
+      "mar": 0.444,
+      "moe": 1.28
+    },
+    {
+      "timestamp": "2026-03-24T10:33:01.123410",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 3.16,
+      "ear": 0.419,
+      "perclos": 0.024,
+      "mar": 0.628,
+      "moe": 1.5
+    },
+    {
+      "timestamp": "2026-03-24T10:33:01.188379",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.07,
+      "ear": 0.5499770123608514,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:33:01.417395",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 0.22,
+      "ear": 0.476,
+      "perclos": 0.024,
+      "mar": 0.633,
+      "moe": 1.33
+    },
+    {
+      "timestamp": "2026-03-24T10:33:01.491558",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.08,
+      "ear": 0.6060595311498226,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:33:01.641315",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 0.15,
+      "ear": 0.475,
+      "perclos": 0.024,
+      "mar": 0.64,
+      "moe": 1.35
+    },
+    {
+      "timestamp": "2026-03-24T10:33:01.717353",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.08,
+      "ear": 0.5150844166364745,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:33:02.098374",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 0.38,
+      "ear": 0.431,
+      "perclos": 0.023,
+      "mar": 0.63,
+      "moe": 1.46
+    },
+    {
+      "timestamp": "2026-03-24T10:33:02.177613",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.08,
+      "ear": 0.6074180916562348,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:33:02.261373",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 0.08,
+      "ear": 0.469,
+      "perclos": 0.023,
+      "mar": 0.666,
+      "moe": 1.42
+    },
+    {
+      "timestamp": "2026-03-24T10:33:02.342378",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.09,
+      "ear": 0.5207638832440069,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:33:02.520381",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 0.17,
+      "ear": 0.472,
+      "perclos": 0.023,
+      "mar": 0.64,
+      "moe": 1.36
+    },
+    {
+      "timestamp": "2026-03-24T10:33:03.650267",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 1.12,
+      "ear": 0.363,
+      "perclos": 0.021,
+      "mar": 0.484,
+      "moe": 1.34
+    },
+    {
+      "timestamp": "2026-03-24T10:33:12.432628",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 8.8,
+      "ear": 0.066,
+      "perclos": 0.195,
+      "mar": 0.444,
+      "moe": 6.7
+    },
+    {
+      "timestamp": "2026-03-24T10:33:13.631207",
+      "from_state": "DROWSY",
+      "to_state": "WARNING",
+      "duration_sec": 1.19,
+      "ear": 0.316,
+      "perclos": 0.225,
+      "mar": 0.439,
+      "moe": 1.39
+    },
+    {
+      "timestamp": "2026-03-24T10:33:20.437238",
+      "from_state": "WARNING",
+      "to_state": "FOCUSED",
+      "duration_sec": 6.81,
+      "ear": 0.366,
+      "perclos": 0.199,
+      "mar": 0.431,
+      "moe": 1.18
+    },
+    {
+      "timestamp": "2026-03-24T10:33:29.302315",
+      "from_state": "FOCUSED",
+      "to_state": "WARNING",
+      "duration_sec": 8.87,
+      "ear": 0.216,
+      "perclos": 0.2,
+      "mar": 0.458,
+      "moe": 2.12
+    },
+    {
+      "timestamp": "2026-03-24T10:33:29.392384",
+      "from_state": "WARNING",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.09,
+      "ear": 0.292,
+      "perclos": 0.19,
+      "mar": 0.459,
+      "moe": 1.57
+    },
+    {
+      "timestamp": "2026-03-24T10:35:53.893776",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 144.49,
+      "ear": 0.142,
+      "perclos": 0.187,
+      "mar": 0.347,
+      "moe": 2.44
+    },
+    {
+      "timestamp": "2026-03-24T10:35:54.312621",
+      "from_state": "DISTRACTED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.42,
+      "ear": 0.164,
+      "perclos": 0.194,
+      "mar": 0.357,
+      "moe": 2.18
+    },
+    {
+      "timestamp": "2026-03-24T10:36:12.741808",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 18.43,
+      "ear": 0.3135968369635292,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:12.871596",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.382,
+      "perclos": 0.326,
+      "mar": 0.379,
+      "moe": 0.99
+    },
+    {
+      "timestamp": "2026-03-24T10:36:16.976605",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 4.12,
+      "ear": 0.517845505464698,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:17.073670",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.09,
+      "ear": 0.484,
+      "perclos": 0.329,
+      "mar": 0.64,
+      "moe": 1.32
+    },
+    {
+      "timestamp": "2026-03-24T10:36:20.673737",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 3.6,
+      "ear": 0.03360398012456669,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:20.782570",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.194,
+      "perclos": 0.304,
+      "mar": 0.495,
+      "moe": 2.54
+    },
+    {
+      "timestamp": "2026-03-24T10:36:21.538700",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.76,
+      "ear": 0.024801472524793977,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:21.732072",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.19,
+      "ear": 0.123,
+      "perclos": 0.31,
+      "mar": 0.436,
+      "moe": 3.56
+    },
+    {
+      "timestamp": "2026-03-24T10:36:24.714355",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 2.99,
+      "ear": 0.509898920531948,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:24.822550",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.09,
+      "ear": 0.466,
+      "perclos": 0.304,
+      "mar": 0.605,
+      "moe": 1.3
+    },
+    {
+      "timestamp": "2026-03-24T10:36:24.957010",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.14,
+      "ear": 0.5083211095808339,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:26.566692",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 1.61,
+      "ear": 0.355,
+      "perclos": 0.314,
+      "mar": 0.479,
+      "moe": 1.35
+    },
+    {
+      "timestamp": "2026-03-24T10:36:27.360685",
+      "from_state": "DROWSY",
+      "to_state": "WARNING",
+      "duration_sec": 0.8,
+      "ear": 0.359,
+      "perclos": 0.299,
+      "mar": 0.423,
+      "moe": 1.18
+    },
+    {
+      "timestamp": "2026-03-24T10:36:28.738971",
+      "from_state": "WARNING",
+      "to_state": "FOCUSED",
+      "duration_sec": 1.38,
+      "ear": 0.03515984027115038,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:28.837524",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.1,
+      "ear": 0.118,
+      "perclos": 0.302,
+      "mar": 0.529,
+      "moe": 4.5
+    },
+    {
+      "timestamp": "2026-03-24T10:36:29.059925",
+      "from_state": "DROWSY",
+      "to_state": "WARNING",
+      "duration_sec": 0.22,
+      "ear": 0.322,
+      "perclos": 0.299,
+      "mar": 0.468,
+      "moe": 1.45
+    },
+    {
+      "timestamp": "2026-03-24T10:36:29.164391",
+      "from_state": "WARNING",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.32,
+      "perclos": 0.297,
+      "mar": 0.464,
+      "moe": 1.45
+    },
+    {
+      "timestamp": "2026-03-24T10:36:48.830699",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 19.67,
+      "ear": 0.04947442744931569,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:36:48.944060",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.106,
+      "perclos": 0.26,
+      "mar": 0.439,
+      "moe": 4.17
+    },
+    {
+      "timestamp": "2026-03-24T10:37:35.830667",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 46.9,
+      "ear": 0.04760260218553277,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:37:35.924132",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.09,
+      "ear": 0.172,
+      "perclos": 0.071,
+      "mar": 0.528,
+      "moe": 3.07
+    },
+    {
+      "timestamp": "2026-03-24T10:37:39.881507",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 3.96,
+      "ear": 0.04044367335454904,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:37:39.986277",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.1,
+      "ear": 0.307,
+      "perclos": 0.071,
+      "mar": 0.501,
+      "moe": 1.63
+    },
+    {
+      "timestamp": "2026-03-24T10:37:59.708303",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 19.73,
+      "ear": 0.034669927368108,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:37:59.900512",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.19,
+      "ear": 0.203,
+      "perclos": 0.163,
+      "mar": 0.579,
+      "moe": 2.85
+    },
+    {
+      "timestamp": "2026-03-24T10:38:00.659577",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.76,
+      "ear": 0.03212496771742546,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:38:00.772310",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.099,
+      "perclos": 0.165,
+      "mar": 0.549,
+      "moe": 5.52
+    },
+    {
+      "timestamp": "2026-03-24T10:38:03.243688",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 2.48,
+      "ear": 0.04776193915613278,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:38:03.341396",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.09,
+      "ear": 0.063,
+      "perclos": 0.176,
+      "mar": 0.508,
+      "moe": 8.11
+    },
+    {
+      "timestamp": "2026-03-24T10:38:22.263579",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 18.92,
+      "ear": 0.049588916817324066,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:38:22.372139",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.09,
+      "ear": 0.244,
+      "perclos": 0.183,
+      "mar": 0.484,
+      "moe": 1.99
+    },
+    {
+      "timestamp": "2026-03-24T10:38:51.428367",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 29.07,
+      "ear": 0.04315390702593389,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:38:51.617449",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.19,
+      "ear": 0.297,
+      "perclos": 0.178,
+      "mar": 0.481,
+      "moe": 1.62
+    },
+    {
+      "timestamp": "2026-03-24T10:38:56.452028",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 4.84,
+      "ear": 0.049596340424772754,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:38:56.653717",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.19,
+      "ear": 0.291,
+      "perclos": 0.1,
+      "mar": 0.505,
+      "moe": 1.74
+    },
+    {
+      "timestamp": "2026-03-24T10:38:57.083733",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.44,
+      "ear": 0.04718075869954164,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:38:57.183321",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.09,
+      "ear": 0.307,
+      "perclos": 0.102,
+      "mar": 0.519,
+      "moe": 1.69
+    },
+    {
+      "timestamp": "2026-03-24T10:39:37.791743",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 40.62,
+      "ear": 0.04639694362255026,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:39:37.910167",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.209,
+      "perclos": 0.053,
+      "mar": 0.489,
+      "moe": 2.34
+    },
+    {
+      "timestamp": "2026-03-24T10:40:35.619876",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 57.71,
+      "ear": 0.040511856028830714,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:40:35.731632",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.082,
+      "perclos": 0.096,
+      "mar": 0.437,
+      "moe": 5.33
+    },
+    {
+      "timestamp": "2026-03-24T10:41:02.517736",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 26.79,
+      "ear": 0.03192907353246521,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:41:02.723414",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.2,
+      "ear": 0.232,
+      "perclos": 0.13,
+      "mar": 0.53,
+      "moe": 2.28
+    },
+    {
+      "timestamp": "2026-03-24T10:41:09.538434",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 6.82,
+      "ear": 0.044912136279064444,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:41:09.653129",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.112,
+      "perclos": 0.139,
+      "mar": 0.531,
+      "moe": 4.76
+    },
+    {
+      "timestamp": "2026-03-24T10:41:18.140668",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 8.5,
+      "ear": 0.049597608059525004,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:41:18.337909",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.19,
+      "ear": 0.324,
+      "perclos": 0.139,
+      "mar": 0.528,
+      "moe": 1.63
+    },
+    {
+      "timestamp": "2026-03-24T10:42:07.239286",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 48.91,
+      "ear": 0.035719849973670476,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:42:07.341444",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.09,
+      "ear": 0.357,
+      "perclos": 0.076,
+      "mar": 0.478,
+      "moe": 1.34
+    },
+    {
+      "timestamp": "2026-03-24T10:42:10.671554",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 3.34,
+      "ear": 0.028236372839612507,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:42:10.792847",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.11,
+      "ear": 0.27,
+      "perclos": 0.076,
+      "mar": 0.408,
+      "moe": 1.51
+    },
+    {
+      "timestamp": "2026-03-24T10:42:21.165488",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 10.38,
+      "ear": 0.04999184671807101,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:42:21.321540",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.16,
+      "ear": 0.287,
+      "perclos": 0.064,
+      "mar": 0.541,
+      "moe": 1.89
+    },
+    {
+      "timestamp": "2026-03-24T10:42:27.261668",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 5.94,
+      "ear": 0.04437506698778233,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:42:27.391434",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.12,
+      "ear": 0.122,
+      "perclos": 0.064,
+      "mar": 0.478,
+      "moe": 3.92
+    },
+    {
+      "timestamp": "2026-03-24T10:42:38.005268",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 10.63,
+      "ear": 0.046832337360889334,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:42:38.201621",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.19,
+      "ear": 0.338,
+      "perclos": 0.063,
+      "mar": 0.527,
+      "moe": 1.56
+    },
+    {
+      "timestamp": "2026-03-24T10:43:15.140466",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 36.94,
+      "ear": 0.04847150458062435,
+      "perclos": 0.0,
+      "mar": 0.0,
+      "moe": 0.0
+    },
+    {
+      "timestamp": "2026-03-24T10:43:15.269377",
+      "from_state": "FOCUSED",
+      "to_state": "DROWSY",
+      "duration_sec": 0.12,
+      "ear": 0.077,
+      "perclos": 0.07,
+      "mar": 0.542,
+      "moe": 7.02
+    },
+    {
+      "timestamp": "2026-03-24T10:43:29.379502",
+      "from_state": "DROWSY",
+      "to_state": "FOCUSED",
+      "duration_sec": 14.11,
+      "ear": 0.351,
+      "perclos": 0.066,
+      "mar": 0.348,
+      "moe": 0.99
+    },
+    {
+      "timestamp": "2026-03-24T10:43:43.742039",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 14.36,
+      "ear": 0.141,
+      "perclos": 0.113,
+      "mar": 0.369,
+      "moe": 2.62
+    },
+    {
+      "timestamp": "2026-03-24T10:43:43.977379",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 0.23,
+      "ear": 0.46,
+      "perclos": 0.113,
+      "mar": 0.372,
+      "moe": 0.81
+    },
+    {
+      "timestamp": "2026-03-24T10:44:03.340567",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 19.34,
+      "ear": 0.367,
+      "perclos": 0.101,
+      "mar": 0.351,
+      "moe": 0.96
+    },
+    {
+      "timestamp": "2026-03-24T10:44:11.452127",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 8.13,
+      "ear": 0.329,
+      "perclos": 0.107,
+      "mar": 0.486,
+      "moe": 1.48
+    },
+    {
+      "timestamp": "2026-03-24T10:44:17.832005",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 6.36,
+      "ear": 0.433,
+      "perclos": 0.095,
+      "mar": 0.388,
+      "moe": 0.9
+    },
+    {
+      "timestamp": "2026-03-24T10:44:20.714798",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 2.9,
+      "ear": 0.346,
+      "perclos": 0.094,
+      "mar": 0.439,
+      "moe": 1.27
+    },
+    {
+      "timestamp": "2026-03-24T10:44:23.119062",
+      "from_state": "FOCUSED",
+      "to_state": "DISTRACTED",
+      "duration_sec": 2.41,
+      "ear": 0.364,
+      "perclos": 0.091,
+      "mar": 0.492,
+      "moe": 1.35
+    },
+    {
+      "timestamp": "2026-03-24T10:44:25.477987",
+      "from_state": "DISTRACTED",
+      "to_state": "FOCUSED",
+      "duration_sec": 2.36,
+      "ear": 0.284,
+      "perclos": 0.089,
+      "mar": 0.472,
+      "moe": 1.66
+    }
+  ]
+}

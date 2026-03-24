@@ -96,7 +96,7 @@ STATE_KR = {
 # ── 상태 색상 테이블 (BGR) ────────────────────────────────────────
 STATE_COLOR = {
     "FOCUSED":    (0,   255, 0  ),
-    "DISTRACTED": (0,   255, 255),
+    "DISTRACTED": (0,   140, 255),
     "WARNING":    (0,   165, 255),
     "DROWSY":     (0,   0,   255),
     "ABSENT":     (128, 128, 128),
@@ -292,13 +292,10 @@ def run_calibration(cap, face_mesh, eye_det_cls):
         cv2.waitKey(1)
 
     if calib_ears:
-        calib_ears.sort()
-        cutoff    = int(len(calib_ears) * 0.2)
-        top80     = calib_ears[cutoff:]
-        baseline  = float(np.mean(top80))
+        baseline   = float(np.mean(calib_ears))
         ear_thresh = baseline * EAR_CALIB_RATIO
         # [수정] nan 경고 방지 - calib_ears 있을 때만 평균 계산
-        avg_str   = f"{float(np.mean(calib_ears)):.3f}"
+        avg_str    = f"{baseline:.3f}"
     else:
         baseline   = 0.28
         ear_thresh = 0.21
@@ -391,9 +388,13 @@ def main():
 
         # ── 모드별 처리 ──────────────────────────────────────
         if current_mode == MODE_TEST:
-            frame, in_mission = mission.update(result["final_state"], frame)
+            frame, in_mission, mission_success = mission.update(
+                result["final_state"], frame)
+            if mission_success:
+                detector.reset_tracking(t_now)
         else:
             in_mission = False
+            mission_success = False
 
         # ── 캡처용 clean_frame ────────────────────────────────
         clean_frame = frame.copy()
