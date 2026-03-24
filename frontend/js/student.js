@@ -30,6 +30,8 @@ let checkedCount = 0;
 let cameraInstance = null;
 let dailyCall = null;
 let ws = null;
+let captionViewerWs = null;
+let captionClearTimer = null;
 
 // 감지 카운터
 let eyeCount = 0, mouthCount = 0, headCount = 0, absenceCount = 0;
@@ -41,7 +43,40 @@ let prevEyeAlert = false, prevYawnAlert = false, prevHeadAlert = false;
 // 캘리브레이션
 let calibEars = [], isCalib = true, EAR_THRESH = 0.20;
 
-const BACKEND_URL = 'https://sleepdetection-production.up.railway.app';
+const IS_LOCAL_HOST = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const BACKEND_URL = IS_LOCAL_HOST
+  ? 'http://127.0.0.1:8000'
+  : 'https://sleepdetection-production.up.railway.app';
+
+function getWsBaseUrl() {
+  return BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+}
+
+function renderCaption(text, speaker = '강사') {
+  const captionEl = document.getElementById('student-live-caption');
+  if (!captionEl) return;
+  captionEl.textContent = `${speaker}: ${text}`;
+  captionEl.classList.add('show');
+  clearTimeout(captionClearTimer);
+  captionClearTimer = setTimeout(() => {
+    captionEl.classList.remove('show');
+    captionEl.textContent = '';
+  }, 5000);
+}
+
+function connectCaptionViewer(roomCode = 'GLOBAL') {
+  if (captionViewerWs) captionViewerWs.close();
+  const path = roomCode === 'GLOBAL'
+    ? `${getWsBaseUrl()}/ws/caption-view`
+    : `${getWsBaseUrl()}/ws/caption-view/${encodeURIComponent(roomCode)}`;
+  captionViewerWs = new WebSocket(path);
+  captionViewerWs.onmessage = (event) => {
+    const payload = JSON.parse(event.data);
+    if (payload.type === 'caption' && payload.text && payload.final !== false) {
+      renderCaption(payload.text, payload.speaker || '강사');
+    }
+  };
+}
 
 // ── 계산 함수 ─────────────────────────────────
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -400,8 +435,9 @@ function confirmOnboarding() {
 // ── Daily.co ─────────────────────────────────
 async function joinDailyRoom(userName, role) {
   try {
+    const roomCode = sessionStorage.getItem('roomCode') || 'LION-2025';
     const res = await fetch(
-      `${BACKEND_URL}/api/room-token?user_name=${encodeURIComponent(userName)}&role=${role}`
+      `${BACKEND_URL}/api/room-token?user_name=${encodeURIComponent(userName)}&room_code=${encodeURIComponent(roomCode)}&role=${role}`
     );
     if (!res.ok) throw new Error('토큰 발급 실패');
     const { token, room_url } = await res.json();
@@ -439,8 +475,8 @@ function removePeerTile(sid) {
 // ── WebSocket ─────────────────────────────────
 function connectWebSocket(studentId) {
   try {
-    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    ws = new WebSocket(`${wsUrl}/ws/student/${encodeURIComponent(studentId)}`);
+    const roomCode = sessionStorage.getItem('roomCode') || 'LION-2025';
+    ws = new WebSocket(`${getWsBaseUrl()}/ws/student/${encodeURIComponent(studentId)}?room_code=${encodeURIComponent(roomCode)}`);
     ws.onopen  = () => console.log('WS 연결됨');
     ws.onclose = () => setTimeout(() => connectWebSocket(studentId), 3000);
     ws.onerror = e => console.warn('WS 오류:', e);
@@ -495,7 +531,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (classEl && roomCode) classEl.textContent = '멋쟁이사자처럼 · ' + roomCode;
 
   connectWebSocket(userName);
+  connectCaptionViewer();
 });
 
-window.addEventListener('beforeunload', () => clearInterval(timerInterval));
+window.addEventListener('beforeunload', () => {
+  if (captionViewerWs) captionViewerWs.close();
+  clearInterval(timerInterval);
+});
 window.addEventListener('resize', syncCanvasSize);
