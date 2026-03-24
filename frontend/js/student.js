@@ -451,11 +451,9 @@ function onParticipantJoined(e) {
   const { session_id: sid, user_name: name = '참여자', owner } = e.participant;
 
   if (owner) {
-    // 강사가 입장한 경우 — instructor-video에 연결
     attachInstructorVideo(e.participant);
   } else {
-    // 다른 학생이 입장한 경우 — peer 타일에 이름 표시
-    updatePeerTileLabel(sid, name);
+    addPeerTile(sid, name);
   }
 }
 
@@ -481,6 +479,16 @@ function onTrackStarted(e) {
       if (instFallback) instFallback.style.display = 'none';
       console.log('강사 영상 연결됨');
     }
+  } else {
+    // 다른 학생 영상 — peer 타일에 연결
+    const sid      = e.participant.session_id;
+    const peerVideo    = document.getElementById('peer-video-' + sid);
+    const peerFallback = document.getElementById('peer-fallback-' + sid);
+    if (peerVideo) {
+      peerVideo.srcObject = new MediaStream([e.track]);
+      peerVideo.style.display = 'block';
+      if (peerFallback) peerFallback.style.display = 'none';
+    }
   }
 }
 
@@ -496,26 +504,31 @@ function attachInstructorVideo(participant) {
   }
 }
 
-function updatePeerTileLabel(sid, name) {
-  const avatars = document.querySelectorAll('.peer-avatar');
-  for (const el of avatars) {
-    if (!el.dataset.sid || el.dataset.sid === sid) {
-      el.dataset.sid = sid;
-      el.textContent = name.charAt(0);
-      const label = el.closest('.tile')?.querySelector('.tile-label');
-      if (label) label.textContent = name;
-      break;
-    }
-  }
+// [수정] 실제 참여자 타일 동적 생성
+function addPeerTile(sid, name) {
+  const container = document.getElementById('peer-container');
+  if (!container) return;
+  if (document.getElementById('peer-tile-' + sid)) return; // 중복 방지
+
+  const tile = document.createElement('div');
+  tile.className = 'tile tile-peer';
+  tile.id = 'peer-tile-' + sid;
+  tile.onclick = () => swapToMain('peer-tile-' + sid);
+  tile.innerHTML = `
+    <video id="peer-video-${sid}" autoplay muted playsinline
+           style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;"></video>
+    <div class="tile-fallback peer-fallback" id="peer-fallback-${sid}">
+      <div class="peer-avatar">${name.charAt(0)}</div>
+    </div>
+    <div class="tile-label">${name}</div>
+    <div class="peer-status-dot" style="background:#22c55e;"></div>
+  `;
+  container.appendChild(tile);
 }
 
 function removePeerTile(sid) {
-  document.querySelectorAll('.peer-avatar').forEach(el => {
-    if (el.dataset.sid === sid) {
-      el.dataset.sid = '';
-      el.textContent = '?';
-    }
-  });
+  const tile = document.getElementById('peer-tile-' + sid);
+  if (tile) tile.remove();
 }
 
 // ── WebSocket ─────────────────────────────────

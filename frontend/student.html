@@ -175,20 +175,8 @@
           <div class="my-label">카메라 꺼짐</div>
         </div>
       </div>
-      <div class="tile tile-peer" id="tile-peer-1" onclick="swapToMain('tile-peer-1')">
-        <div class="tile-fallback peer-fallback">
-          <div class="peer-avatar">현우</div>
-        </div>
-        <div class="tile-label">최현우</div>
-        <div class="peer-status-dot" style="background:#22c55e;"></div>
-      </div>
-      <div class="tile tile-peer" id="tile-peer-2" onclick="swapToMain('tile-peer-2')">
-        <div class="tile-fallback peer-fallback">
-          <div class="peer-avatar">채현</div>
-        </div>
-        <div class="tile-label">이채현</div>
-        <div class="peer-status-dot" style="background:#22c55e;"></div>
-      </div>
+      <!-- peer 타일은 Daily.co participant-joined 이벤트로 동적 생성됨 -->
+      <div id="peer-container"></div>
     </div>
   </div>
 
