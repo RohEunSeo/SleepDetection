@@ -464,10 +464,11 @@ function onParticipantUpdated(e) {
   if (owner) attachInstructorVideo(e.participant);
 }
 
-// [수정] 트랙 시작 시 — video 태그에 실제 영상 연결
 function onTrackStarted(e) {
   if (e.participant.local) return;
   if (e.track.kind !== 'video') return;
+
+  const sid = e.participant.session_id;
 
   if (e.participant.owner) {
     // 강사 영상
@@ -480,8 +481,7 @@ function onTrackStarted(e) {
       console.log('강사 영상 연결됨');
     }
   } else {
-    // 다른 학생 영상 — peer 타일에 연결
-    const sid      = e.participant.session_id;
+    // 다른 학생 웹캠 영상 — peer 타일에 연결
     const peerVideo    = document.getElementById('peer-video-' + sid);
     const peerFallback = document.getElementById('peer-fallback-' + sid);
     if (peerVideo) {
@@ -504,11 +504,11 @@ function attachInstructorVideo(participant) {
   }
 }
 
-// [수정] 실제 참여자 타일 동적 생성
+// 실제 참여자 peer 타일 동적 생성
 function addPeerTile(sid, name) {
   const container = document.getElementById('peer-container');
   if (!container) return;
-  if (document.getElementById('peer-tile-' + sid)) return; // 중복 방지
+  if (document.getElementById('peer-tile-' + sid)) return;
 
   const tile = document.createElement('div');
   tile.className = 'tile tile-peer';
