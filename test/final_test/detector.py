@@ -177,6 +177,11 @@ class DrowsinessDetector:
         self.base_roll_cnt = 0
         self.prev_state = "FOCUSED"
         self._was_warning = False
+        # 정상 복귀 추적용
+        self.normal_frame_count = 0
+        self.drowsy_frame_count = 0
+        self.NORMAL_RECOVER_FRAMES = 8   # 연속 8프레임 정상이면 복귀
+        self.DROWSY_HOLD_FRAMES = 3       # 연속 3프레임 강한 졸음이면 확정
 
     def reset_tracking(self, t_now):
         self.scorer.reset_tracking(t_now)
@@ -189,6 +194,8 @@ class DrowsinessDetector:
         self.headbang_cnt = 0
         self.prev_state = "FOCUSED"
         self._was_warning = False
+        self.normal_frame_count = 0
+        self.drowsy_frame_count = 0
 
     def update(self, frame, lms, t_now):
         frame_size = (frame.shape[1], frame.shape[0])
@@ -313,29 +320,55 @@ class DrowsinessDetector:
 
         cutoff = t_now - WARNING_WINDOW_MIN * 60
         while self.warning_times and self.warning_times[0] < cutoff:
-            self.warning_times.popleft()
-        self.warning_count = len(self.warning_times)
-
-        drowsy = (
+              self.warning_times.popleft()
+              self.warning_count = len(self.warning_times)
+        # 현재 프레임 기준 강한 졸음
+        drowsy_now = (
             asleep or
             perclos >= PERCLOS_DROWSY or
-            headbanging or
-            self.warning_count >= WARNING_MAX_COUNT
+            headbanging
         )
-        warning = (
+        # 현재 프레임 기준 경고
+        warning_now = (
             yawn_detected or
             PERCLOS_WARNING <= perclos < PERCLOS_DROWSY or
             moe_alert
         )
-
-        if drowsy:
-            final_state = "DROWSY"
-        elif warning:
-            final_state = "WARNING"
-        elif distr:
-            final_state = "DISTRACTED"
+        # 누적 경고는 보조 판단으로만 사용
+        warning_accumulated = self.warning_count >= WARNING_MAX_COUNT
+        # 현재 프레임이 정상 범위인지
+        normal_now = (
+        (ear >= self.ear_thresh) and
+        (perclos < PERCLOS_WARNING) and
+        (not yawn_detected) and
+        (not moe_alert) and
+        (not distr) and
+        (not asleep) and
+        (not headbanging)
+        )
+        # 상태 복귀/진입용 연속 프레임 카운트
+        if drowsy_now:
+           self.drowsy_frame_count += 1
+           self.normal_frame_count = 0
+        elif normal_now:
+           self.normal_frame_count += 1
+           self.drowsy_frame_count = 0
         else:
-            final_state = "FOCUSED"
+           self.normal_frame_count = 0
+           self.drowsy_frame_count = 0
+        # 최종 상태 결정
+        if self.drowsy_frame_count >= self.DROWSY_HOLD_FRAMES:
+           final_state = "DROWSY"
+        elif self.normal_frame_count >= self.NORMAL_RECOVER_FRAMES:
+           final_state = "FOCUSED"
+           self.warning_times.clear()
+           self.warning_count = 0
+        elif warning_now or warning_accumulated:
+           final_state = "WARNING"
+        elif distr:
+           final_state = "DISTRACTED"
+        else:
+           final_state = "FOCUSED"
 
         if final_state == "WARNING" and not self._was_warning:
             self.warning_times.append(t_now)
