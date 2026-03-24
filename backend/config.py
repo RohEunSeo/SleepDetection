@@ -16,5 +16,5 @@ DAILY_DOMAIN   = "sleep2wake"  # sleep2wake.daily.co
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 # ── 방 설정 ─────────────────────────────────
-ROOM_MAX_PARTICIPANTS = 50
+ROOM_MAX_PARTICIPANTS = 20
 ROOM_TOKEN_EXPIRE_SEC = 60 * 60 * 4  # 4시간
