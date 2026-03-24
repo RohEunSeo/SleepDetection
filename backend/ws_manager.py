@@ -54,6 +54,20 @@ class ConnectionManager:
         for ws in dead:
             self.admins.remove(ws)
 
+    # [수정] 모든 학생에게 메시지 broadcast (수업 종료 신호 등)
+    async def broadcast_to_students(self, message: dict):
+        """모든 학생에게 메시지 broadcast"""
+        if not self.students:
+            return
+        dead = []
+        for student_id, ws in self.students.items():
+            try:
+                await self._send(ws, message)
+            except Exception:
+                dead.append(student_id)
+        for student_id in dead:
+            self.students.pop(student_id, None)
+
     # ── 내부 헬퍼 ───────────────────────────
     @staticmethod
     async def _send(ws: WebSocket, message: dict):
