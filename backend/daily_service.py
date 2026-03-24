@@ -33,7 +33,8 @@ def _headers() -> dict:
 async def ensure_room(room_code: str) -> dict:
     """
     방이 없으면 생성, 있으면 그대로 반환
-    - 강사만 화면 공유 가능 (owner_only_broadcast)
+    - 모든 참여자 영상/음성 송출 가능
+    - 화면 공유는 강사(owner)만 가능
     """
     room_name = room_code.lower()
 
@@ -54,9 +55,9 @@ async def ensure_room(room_code: str) -> dict:
                     "max_participants":     ROOM_MAX_PARTICIPANTS,
                     "enable_chat":          True,
                     "enable_screenshare":   True,
-                    "owner_only_broadcast": True,   # 강사(owner)만 화면 공유 가능
+                    "owner_only_broadcast": False,  # [수정] 학생도 영상/음성 송출 가능
                     "start_video_off":      False,
-                    "start_audio_off":      False,
+                    "start_audio_off":      True,   # 마이크는 기본 꺼짐 (졸음 감지 서비스 특성상)
                 },
             },
         )
@@ -73,7 +74,7 @@ async def create_meeting_token(
     """
     Daily.co 입장 토큰 발급
     - is_owner=True (강사): 화면 공유 가능
-    - is_owner=False (학생): 화면 공유 불가
+    - is_owner=False (학생): 영상 송출 가능, 화면 공유 불가
     """
     async with httpx.AsyncClient() as client:
         r = await client.post(
@@ -81,9 +82,9 @@ async def create_meeting_token(
             headers=_headers(),
             json={
                 "properties": {
-                    "room_name":       room_code.lower(),
-                    "user_name":       user_name,
-                    "is_owner":        is_owner,
+                    "room_name":          room_code.lower(),
+                    "user_name":          user_name,
+                    "is_owner":           is_owner,
                     "enable_screenshare": is_owner,  # 강사만 화면 공유 허용
                     "exp": int(datetime.now().timestamp()) + ROOM_TOKEN_EXPIRE_SEC,
                 }
