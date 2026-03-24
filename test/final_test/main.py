@@ -6,7 +6,6 @@ main.py - FocusRoom 진입점
 
 의존 파일:
     detector.py       (같은 폴더)
-    mission.py        (같은 폴더)
     data_collector.py (같은 폴더)
     한글 폰트: Windows 기본 맑은고딕 자동 탐색
               없으면 영어로 fallback
