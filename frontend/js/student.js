@@ -439,6 +439,30 @@ async function joinDailyRoom(userName, role) {
       .on('participant-left',    e => removePeerTile(e.participant.session_id))
       .on('track-started',       onTrackStarted);
 
+    // [수정] 이미 방에 있는 참여자 처리 (강사가 먼저 입장한 경우)
+    const existing = dailyCall.participants();
+    Object.values(existing).forEach(p => {
+      if (p.local) return;
+      if (p.owner) {
+        attachInstructorVideo(p);
+      } else {
+        addPeerTile(p.session_id, p.user_name || '참여자');
+      }
+      // 이미 트랙이 있으면 연결
+      const videoTrack = p.tracks?.video?.track;
+      if (videoTrack) {
+        if (p.owner) {
+          const v = document.getElementById('instructor-video');
+          const f = document.getElementById('instructor-fallback');
+          if (v) { v.srcObject = new MediaStream([videoTrack]); v.style.display = 'block'; if (f) f.style.display = 'none'; }
+        } else {
+          const pv = document.getElementById('peer-video-' + p.session_id);
+          const pf = document.getElementById('peer-fallback-' + p.session_id);
+          if (pv) { pv.srcObject = new MediaStream([videoTrack]); pv.style.display = 'block'; if (pf) pf.style.display = 'none'; }
+        }
+      }
+    });
+
     console.log('Daily.co 입장 완료');
   } catch (e) {
     console.warn('Daily.co 연결 실패:', e.message);
@@ -503,102 +527,30 @@ function attachInstructorVideo(participant) {
   }
 }
 
-// sid → slotIndex 매핑
-const peerSlotMap = {};
-
 function addPeerTile(sid, name) {
-  if (peerSlotMap[sid]) return; // 이미 슬롯 있음
+  const container = document.getElementById('peer-container');
+  if (!container) return;
+  if (document.getElementById('peer-tile-' + sid)) return;
 
-  // 고정 슬롯(0,1) 빈 곳 찾기
-  let slotFilled = false;
-  for (let i = 0; i < 2; i++) {
-    const slot = document.getElementById('peer-slot-' + i);
-    if (slot && !slot.dataset.sid) {
-      // 슬롯 채우기
-      slot.dataset.sid = sid;
-      slot.classList.remove('tile-empty');
-      peerSlotMap[sid] = 'peer-slot-' + i;
-
-      // video 태그 추가
-      const video = document.createElement('video');
-      video.id = 'peer-video-' + sid;
-      video.autoplay = true;
-      video.muted = true;
-      video.playsInline = true;
-      video.style.cssText = 'display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;';
-      slot.prepend(video);
-
-      // fallback 아바타로 교체
-      const fallback = document.getElementById('peer-slot-' + i + '-fallback');
-      if (fallback) {
-        fallback.innerHTML = `<div class="peer-avatar">${name.charAt(0)}</div>`;
-        fallback.id = 'peer-fallback-' + sid;
-      }
-
-      // 이름 레이블
-      const label = document.getElementById('peer-slot-' + i + '-label');
-      if (label) { label.textContent = name; label.style.display = ''; }
-
-      // 상태 dot 추가
-      const dot = document.createElement('div');
-      dot.className = 'peer-status-dot';
-      dot.style.background = '#22c55e';
-      slot.appendChild(dot);
-
-      slotFilled = true;
-      break;
-    }
-  }
-
-  // 슬롯이 꽉 찼으면 동적 타일 추가
-  if (!slotFilled) {
-    const container = document.getElementById('peer-container');
-    if (!container) return;
-    if (document.getElementById('peer-tile-' + sid)) return;
-    const tile = document.createElement('div');
-    tile.className = 'tile tile-peer';
-    tile.id = 'peer-tile-' + sid;
-    tile.onclick = () => swapToMain('peer-tile-' + sid);
-    tile.innerHTML = `
-      <video id="peer-video-${sid}" autoplay muted playsinline
-             style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;"></video>
-      <div class="tile-fallback peer-fallback" id="peer-fallback-${sid}">
-        <div class="peer-avatar">${name.charAt(0)}</div>
-      </div>
-      <div class="tile-label">${name}</div>
-      <div class="peer-status-dot" style="background:#22c55e;"></div>
-    `;
-    container.appendChild(tile);
-    peerSlotMap[sid] = 'peer-tile-' + sid;
-  }
+  const tile = document.createElement('div');
+  tile.className = 'tile tile-peer';
+  tile.id = 'peer-tile-' + sid;
+  tile.onclick = () => swapToMain('peer-tile-' + sid);
+  tile.innerHTML = `
+    <video id="peer-video-${sid}" autoplay muted playsinline
+           style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;"></video>
+    <div class="tile-fallback peer-fallback" id="peer-fallback-${sid}">
+      <div class="peer-avatar">${name.charAt(0)}</div>
+    </div>
+    <div class="tile-label">${name}</div>
+    <div class="peer-status-dot" style="background:#22c55e;"></div>
+  `;
+  container.appendChild(tile);
 }
 
 function removePeerTile(sid) {
-  const slotId = peerSlotMap[sid];
-  if (!slotId) return;
-
-  // 고정 슬롯이면 대기중으로 초기화
-  if (slotId.startsWith('peer-slot-')) {
-    const slot = document.getElementById(slotId);
-    if (slot) {
-      slot.dataset.sid = '';
-      slot.classList.add('tile-empty');
-      const video = document.getElementById('peer-video-' + sid);
-      if (video) video.remove();
-      const fallback = document.getElementById('peer-fallback-' + sid);
-      if (fallback) {
-        fallback.id = slotId + '-fallback';
-        fallback.innerHTML = `<div class="peer-waiting"><div class="peer-waiting-icon">👤</div><div class="peer-waiting-text">대기 중</div></div>`;
-      }
-      const label = document.getElementById(slotId + '-label');
-      if (label) { label.textContent = ''; label.style.display = 'none'; }
-      slot.querySelector('.peer-status-dot')?.remove();
-    }
-  } else {
-    // 동적 타일이면 그냥 제거
-    document.getElementById(slotId)?.remove();
-  }
-  delete peerSlotMap[sid];
+  const tile = document.getElementById('peer-tile-' + sid);
+  if (tile) tile.remove();
 }
 
 // ── WebSocket ─────────────────────────────────
