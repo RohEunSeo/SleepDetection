@@ -190,11 +190,13 @@ class DrowsinessDetector:
         # EAR smoothing (반사/노이즈 대응)
         self.ear_hist = deque(maxlen=5)
         
-        # 정상 복귀 추적용
-        self.normal_frame_count = 0
-        self.drowsy_frame_count = 0
-        self.NORMAL_RECOVER_FRAMES = 8   # 연속 8프레임 정상이면 복귀
-        self.DROWSY_HOLD_FRAMES = 3       # 연속 3프레임 강한 졸음이면 확정
+       # 시간 기반 상태 추적용
+        self.drowsy_elapsed = 0.0     # 졸음 징후 누적 시간
+        self.recovery_elapsed = 0.0   # 정상 회복 누적 시간
+        self.WARNING_SEC = 15.0       # 15초 후 졸음 의심
+        self.DROWSY_SEC = 30.0        # 30초 후 졸음 확정
+        self.RECOVER_WARNING_SEC = 5.0   # 회복 시작 후 WARNING 유지
+        self.RECOVER_FOCUSED_SEC = 10.0  # 정상 10초 유지 시 FOCUSED
 
     def reset_tracking(self, t_now):
         self.scorer.reset_tracking(t_now)
@@ -208,8 +210,8 @@ class DrowsinessDetector:
         self.prev_state = "FOCUSED"
         self._was_warning = False
         self.ear_hist.clear()
-        self.normal_frame_count = 0
-        self.drowsy_frame_count = 0
+        self.drowsy_elapsed = 0.0
+        self.recovery_elapsed = 0.0
 
     def update(self, frame, lms, t_now):
         frame_size = (frame.shape[1], frame.shape[0])
@@ -285,6 +287,8 @@ class DrowsinessDetector:
         mouth_height = mouth_feat["mouth_height"]
 
         moe = mar / (ear + 1e-6)
+        
+        elapsed = max(0.0, t_now - self.scorer.last_time)
         perclos = self.scorer.get_rolling_PERCLOS(t_now, ear)
         asleep, looking_away, distracted = self.scorer.eval_scores(t_now, ear, gaze, roll, pitch, yaw)
 
@@ -385,29 +389,39 @@ class DrowsinessDetector:
            (not asleep) and
            (not headbanging)
         )
-        # 상태 복귀/진입용 연속 프레임 카운트
-        if drowsy_now:
-           self.drowsy_frame_count += 1
-           self.normal_frame_count = 0
+
+        # 졸음 징후 누적 / 회복 누적
+        fatigue_signal = drowsy_now or warning_now
+
+        if fatigue_signal:
+            self.drowsy_elapsed += elapsed
+            self.recovery_elapsed = 0.0
         elif normal_now:
-           self.normal_frame_count += 1
-           self.drowsy_frame_count = 0
+            self.recovery_elapsed += elapsed
+            self.drowsy_elapsed = max(0.0, self.drowsy_elapsed - elapsed * 2.0)
         else:
-           self.normal_frame_count = 0
-           self.drowsy_frame_count = 0
+            # 애매한 상태면 천천히 감소
+            self.recovery_elapsed = 0.0
+            self.drowsy_elapsed = max(0.0, self.drowsy_elapsed - elapsed * 0.5)
+
         # 최종 상태 결정
-        if self.drowsy_frame_count >= self.DROWSY_HOLD_FRAMES:
-           final_state = "DROWSY"
-        elif self.normal_frame_count >= self.NORMAL_RECOVER_FRAMES:
-           final_state = "FOCUSED"
-           self.warning_times.clear()
-           self.warning_count = 0
+        if self.drowsy_elapsed >= self.DROWSY_SEC:
+            final_state = "DROWSY"
+        elif self.drowsy_elapsed >= self.WARNING_SEC:
+            final_state = "WARNING"
+        elif self.prev_state == "DROWSY" and self.recovery_elapsed < self.RECOVER_FOCUSED_SEC:
+            # DROWSY에서 막 회복 중이면 바로 FOCUSED로 가지 않고 WARNING 유지
+            final_state = "WARNING"
         elif distr:
-           final_state = "DISTRACTED"
-        elif warning_now or warning_accumulated:
-           final_state = "WARNING"
+            final_state = "DISTRACTED"
         else:
-           final_state = "FOCUSED"
+            final_state = "FOCUSED"
+
+        # 충분히 회복하면 누적 초기화
+        if final_state == "FOCUSED" and self.recovery_elapsed >= self.RECOVER_FOCUSED_SEC:
+            self.drowsy_elapsed = 0.0
+            self.warning_times.clear()
+            self.warning_count = 0
 
         if final_state == "WARNING" and not self._was_warning:
             self.warning_times.append(t_now)
