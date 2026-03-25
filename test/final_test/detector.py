@@ -11,6 +11,7 @@ from sensors import (
     get_landmarks,
     calculate_mar,
     draw_mouth_box,
+    get_mouth_features,
     LEFT_EYE_IDX,
     RIGHT_EYE_IDX,
     MOUTH_IDX,
@@ -26,16 +27,16 @@ PERCLOS_WARNING = 0.20
 PERCLOS_DROWSY = 0.30
 DECAY_FACTOR = 0.9
 
-MAR_THRESH = 0.70
-MAR_FRAMES = 20
-MOE_THRESH = 2.0
+MAR_THRESH = 0.85
+MAR_FRAMES = 28
+MOE_THRESH = 2.2
 MOE_SEC = 3.0
 
-YAW_THRESH = 20.0
-YAW_ASSIST = 15.0
+YAW_THRESH = 15.0
+YAW_ASSIST = 10.0
 PITCH_THRESH = 20.0
 ROLL_THRESH = 20.0
-DISTRACTED_SEC = 2.5
+DISTRACTED_SEC = 0.7
 HEADBANG_DELTA = 10.0
 HEADBANG_COUNT = 3
 
@@ -48,8 +49,8 @@ WARNING_WINDOW_MIN = 10
 
 
 class AttentionScorer:
-    def __init__(self, t_now, ear_thresh):
-        self.ear_thresh = ear_thresh
+    def __init__(self, t_now, closure_thresh):
+        self.closure_thresh = closure_thresh
         self.last_time = t_now
         self.closure_time = 0.0
         self.gaze_time = 0.0
@@ -66,9 +67,10 @@ class AttentionScorer:
 
         self.closure_time = self._update(
             self.closure_time,
-            ear is not None and ear <= self.ear_thresh,
+            ear is not None and ear <= self.closure_thresh,
             elapsed,
         )
+        
         self.gaze_time = self._update(
             self.gaze_time,
             gaze is not None and gaze > GAZE_THRESH,
@@ -76,10 +78,8 @@ class AttentionScorer:
         )
 
         yaw_basic = yaw is not None and abs(yaw) > YAW_THRESH
-        yaw_assist = (
-            yaw is not None and abs(yaw) > YAW_ASSIST and
-            gaze is not None and gaze > GAZE_THRESH
-        )
+        yaw_assist = yaw is not None and abs(yaw) > YAW_ASSIST
+
         pitch_cond = pitch is not None and abs(pitch) > PITCH_THRESH
         roll_cond = roll is not None and abs(roll) > ROLL_THRESH
         head_cond = yaw_basic or yaw_assist or pitch_cond or roll_cond
@@ -91,7 +91,7 @@ class AttentionScorer:
         return asleep, looking_away, distracted
 
     def get_rolling_PERCLOS(self, t_now, ear):
-        eye_closed = ear is not None and ear <= self.ear_thresh
+        eye_closed = ear is not None and ear <= self.closure_thresh
         self.timestamps = np.concatenate((self.timestamps, [t_now]))
         self.closed_flags = np.concatenate((self.closed_flags, [eye_closed]))
 
@@ -157,11 +157,14 @@ class DrowsinessDetector:
     def __init__(self, ear_thresh, t_now, baseline_ear=None):
         self.ear_thresh = ear_thresh
         self.baseline_ear = baseline_ear if baseline_ear is not None else ear_thresh / EAR_CALIB_RATIO
+        # 일반 임계값보다 더 낮은, "진짜 감김" 판정용 임계값
+        self.ear_close_thresh = self.ear_thresh * 0.85
 
         self.eye_det = EyeDetector()
         self.head_pose = HeadPose()
-        self.scorer = AttentionScorer(t_now, ear_thresh)
+        self.scorer = AttentionScorer(t_now, self.ear_close_thresh)
         self.alert_mgr = AlertManager()
+
 
         self.mouth_frame_cnt = 0
         self.yawn_count = 0
@@ -177,6 +180,9 @@ class DrowsinessDetector:
         self.base_roll_cnt = 0
         self.prev_state = "FOCUSED"
         self._was_warning = False
+        # EAR smoothing (반사/노이즈 대응)
+        self.ear_hist = deque(maxlen=5)
+        
         # 정상 복귀 추적용
         self.normal_frame_count = 0
         self.drowsy_frame_count = 0
@@ -194,6 +200,7 @@ class DrowsinessDetector:
         self.headbang_cnt = 0
         self.prev_state = "FOCUSED"
         self._was_warning = False
+        self.ear_hist.clear()
         self.normal_frame_count = 0
         self.drowsy_frame_count = 0
 
@@ -244,18 +251,32 @@ class DrowsinessDetector:
         self.face_miss_start = None
         landmarks = get_landmarks(lms)
         lms_raw = lms[0].landmark
+        
+        #좌/우 눈 EAR
+        ear_l, ear_r = self.eye_det.get_EAR_each(landmarks)
+        ear_mean = (ear_l + ear_r) / 2.0
+        ear_raw = self.eye_det.get_EAR(landmarks)
+        ear = ear_raw
 
-        ear = self.eye_det.get_EAR(landmarks)
-        if not (EAR_VALID_MIN < ear < EAR_VALID_MAX):
-            result["ear"] = ear
+        # 한쪽 눈 반사/가림에 너무 끌려가지 않도록 균형형 결합
+        ear_raw = 0.5 * min(ear_l, ear_r) + 0.5 * ear_mean
+
+        if not (EAR_VALID_MIN < ear_raw < EAR_VALID_MAX):
+            result["ear"] = ear_raw
             return result
+        
+        # EAR smoothing 적용
+        self.ear_hist.append(ear_raw)
+        ear = float(np.median(self.ear_hist))   # 반사로 튀는 값 제거
 
         roll, pitch, yaw = self.head_pose.get_pose(landmarks, frame_size)
-        if roll is not None and abs(roll - self.base_roll) > 6.0:
-            ear = ear * (1 + abs(roll) / 15)
 
         gaze = self.eye_det.get_Gaze_Score(landmarks, frame_size)
-        mar = calculate_mar(lms_raw)
+        mouth_feat = get_mouth_features(lms_raw)
+        mar = mouth_feat["mar"]
+        mouth_width = mouth_feat["mouth_width"]
+        mouth_height = mouth_feat["mouth_height"]
+
         moe = mar / (ear + 1e-6)
         perclos = self.scorer.get_rolling_PERCLOS(t_now, ear)
         asleep, looking_away, distracted = self.scorer.eval_scores(t_now, ear, gaze, roll, pitch, yaw)
@@ -271,13 +292,21 @@ class DrowsinessDetector:
                 )
 
         ear_l, ear_r = self.eye_det.get_EAR_each(landmarks)
+        ear_mean = (ear_l + ear_r) / 2.0
+        ear_raw = 0.5 * min(ear_l, ear_r) + 0.5 * ear_mean
 
-        if mar > MAR_THRESH:
+        yawn_candidate = (
+            mar > MAR_THRESH and
+            (moe > 2.2 or perclos >= 0.10)
+            )
+
+        if yawn_candidate:
             self.mouth_frame_cnt += 1
         else:
             if self.mouth_frame_cnt >= MAR_FRAMES:
                 self.yawn_count += 1
             self.mouth_frame_cnt = 0
+
         yawn_detected = self.mouth_frame_cnt >= MAR_FRAMES
 
         if moe > MOE_THRESH:
@@ -299,7 +328,7 @@ class DrowsinessDetector:
         distr = distracted or looking_away
         eye_data = {
             "is_drowsy": asleep,
-            "eyes_closed": ear < self.ear_thresh,
+            "eyes_closed": ear < self.ear_close_thresh,
             "closed_sec": self.scorer.closure_time,
         }
         yawn_data = {
@@ -320,8 +349,8 @@ class DrowsinessDetector:
 
         cutoff = t_now - WARNING_WINDOW_MIN * 60
         while self.warning_times and self.warning_times[0] < cutoff:
-              self.warning_times.popleft()
-              self.warning_count = len(self.warning_times)
+             self.warning_times.popleft()
+        self.warning_count = len(self.warning_times)
         # 현재 프레임 기준 강한 졸음
         drowsy_now = (
             asleep or
@@ -338,13 +367,13 @@ class DrowsinessDetector:
         warning_accumulated = self.warning_count >= WARNING_MAX_COUNT
         # 현재 프레임이 정상 범위인지
         normal_now = (
-        (ear >= self.ear_thresh) and
-        (perclos < PERCLOS_WARNING) and
-        (not yawn_detected) and
-        (not moe_alert) and
-        (not distr) and
-        (not asleep) and
-        (not headbanging)
+           (ear >= self.ear_close_thresh) and
+           (perclos < PERCLOS_WARNING) and
+           (not yawn_detected) and
+           (not moe_alert) and
+           (not distr) and
+           (not asleep) and
+           (not headbanging)
         )
         # 상태 복귀/진입용 연속 프레임 카운트
         if drowsy_now:
@@ -363,10 +392,10 @@ class DrowsinessDetector:
            final_state = "FOCUSED"
            self.warning_times.clear()
            self.warning_count = 0
-        elif warning_now or warning_accumulated:
-           final_state = "WARNING"
         elif distr:
            final_state = "DISTRACTED"
+        elif warning_now or warning_accumulated:
+           final_state = "WARNING"
         else:
            final_state = "FOCUSED"
 
@@ -420,7 +449,8 @@ class DrowsinessDetector:
 
     def _draw_eye_boxes(self, frame, lms_raw, frame_size, roll=None):
         fw, fh = frame_size
-        closed_thresh = self.ear_thresh * 0.9
+        closed_thresh = self.ear_close_thresh
+        narrow_thresh = self.ear_thresh * 1.00
 
         for eye_idx in [LEFT_EYE_IDX, RIGHT_EYE_IDX]:
             pts = [lms_raw[j] for j in eye_idx]
@@ -429,14 +459,20 @@ class DrowsinessDetector:
             arr = np.array([[p.x, p.y] for p in pts])
             v1 = LA.norm(arr[2] - arr[3])
             v2 = LA.norm(arr[4] - arr[5])
-            h_dist = LA.norm(arr[0] - arr[1])
-            e_ear = (v1 + v2) / (2.0 * h_dist + 1e-6)
+            h_dist = LA.norm(arr[0] - arr[1]) + 1e-6
+            # robust EAR
+            v_small = min(v1, v2)
+            v_mean = (v1 + v2) / 2.0
+            e_ear = (0.7 * v_small + 0.3 * v_mean) / h_dist
 
-            if roll is not None and abs(roll - self.base_roll) > 6.0:
-                e_ear = e_ear * (1 + abs(roll) / 15)
-
-            is_closed = e_ear < closed_thresh
-            color = (0, 0, 255) if is_closed else (0, 255, 0)
-            label = "Closed" if is_closed else "Open"
+            if e_ear < closed_thresh:
+                color = (0, 0, 255) 
+                label = "Closed"
+            elif e_ear < narrow_thresh:
+                color = (0, 165, 255)
+                label = "Narrow"
+            else:
+                color = (0, 255, 0)
+                label = "Open"
             cv2.rectangle(frame, (min(xs) - 5, min(ys) - 5), (max(xs) + 5, max(ys) + 5), color, 2)
             cv2.putText(frame, label, (min(xs) - 5, min(ys) - 10), cv2.FONT_HERSHEY_PLAIN, 1.2, color, 1)
