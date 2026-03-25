@@ -60,6 +60,9 @@ function connectCaptionTextWs() {
   captionTextWs = new WebSocket(
     `${getWsBaseUrl()}/ws/caption-text?speaker=${encodeURIComponent(userName)}&room_code=${encodeURIComponent(roomCode)}`
   );
+  captionTextWs.onclose = () => {
+    if (micOn) setTimeout(connectCaptionTextWs, 2000);
+  };
 }
 
 function sendCaptionText(text, isFinal = false) {

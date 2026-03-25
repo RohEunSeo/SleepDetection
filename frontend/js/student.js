@@ -73,7 +73,7 @@ function connectCaptionViewer(roomCode = 'GLOBAL') {
   captionViewerWs = new WebSocket(path);
   captionViewerWs.onmessage = (event) => {
     const payload = JSON.parse(event.data);
-    if (payload.type === 'caption' && payload.text && payload.final !== false) {
+    if (payload.type === 'caption' && payload.text) {
       renderCaption(payload.text, payload.speaker || '강사');
     }
   };
