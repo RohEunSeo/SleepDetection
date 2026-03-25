@@ -415,11 +415,12 @@ function confirmOnboarding() {
       }
     }).catch(() => {});
 
+  const roomCode = sessionStorage.getItem('roomCode') || 'GLOBAL';
+  connectCaptionViewer(roomCode);  
   joinDailyRoom(userName, userRole);
   startCamera();
   startTimer();
 }
-
 // ── Daily.co ─────────────────────────────────
 async function joinDailyRoom(userName, role) {
   try {
