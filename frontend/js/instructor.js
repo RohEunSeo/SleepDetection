@@ -56,8 +56,9 @@ function getSpeechRecognitionCtor() {
 function connectCaptionTextWs() {
   if (captionTextWs) captionTextWs.close();
   const userName = sessionStorage.getItem('userName') || '강사';
+  const roomCode = sessionStorage.getItem('roomCode') || currentRoomCode || 'GLOBAL';
   captionTextWs = new WebSocket(
-    `${getWsBaseUrl()}/ws/caption-text?speaker=${encodeURIComponent(userName)}`
+    `${getWsBaseUrl()}/ws/caption-text?speaker=${encodeURIComponent(userName)}&room_code=${encodeURIComponent(roomCode)}`
   );
 }
 

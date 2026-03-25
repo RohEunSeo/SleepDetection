@@ -99,8 +99,9 @@ async def caption_view_default_ws(websocket: WebSocket):
 
 
 @app.websocket("/ws/caption-text")
-async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사"):
+async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사", room_code: str = "GLOBAL"):
     await websocket.accept()
+    channel = room_code if room_code != "GLOBAL" else DEFAULT_CAPTION_CHANNEL
     try:
         while True:
             raw = await websocket.receive_text()
@@ -110,10 +111,10 @@ async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사")
                 continue
 
             await caption_manager.broadcast(
-                DEFAULT_CAPTION_CHANNEL,
+                channel,
                 {
                     "type": "caption",
-                    "room_code": DEFAULT_CAPTION_CHANNEL,
+                    "room_code": channel,
                     "speaker": payload.get("speaker") or speaker,
                     "text": text,
                     "final": bool(payload.get("final", False)),
