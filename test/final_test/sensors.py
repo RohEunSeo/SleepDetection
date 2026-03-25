@@ -74,17 +74,17 @@ class EyeDetector:
         self.R_IRIS = RIGHT_IRIS
 
     @staticmethod
-     def _calc_ear(eye_pts):
-        v1 = LA.norm(eye_pts[2] - eye_pts[3])
-        v2 = LA.norm(eye_pts[4] - eye_pts[5])
-        h = LA.norm(eye_pts[0] - eye_pts[1]) + 1e-6
-     # 안경 반사/랜드마크 튐 대응:
-     # 더 작은 세로거리 쪽을 더 신뢰해서 EAR를 계산
-        v_small = min(v1, v2)
-        v_mean = (v1 + v2) / 2.0
-        v_robust = 0.7 * v_small + 0.3 * v_mean
+    def _calc_ear(eye_pts):
+         v1 = LA.norm(eye_pts[2] - eye_pts[3])
+         v2 = LA.norm(eye_pts[4] - eye_pts[5])
+         h = LA.norm(eye_pts[0] - eye_pts[1]) + 1e-6
+        # 안경 반사/랜드마크 튐 대응:
+        # 더 작은 세로거리 쪽을 더 신뢰해서 EAR를 계산
+         v_small = min(v1, v2)
+         v_mean = (v1 + v2) / 2.0
+         v_robust = 0.7 * v_small + 0.3 * v_mean
         
-        return v_robust / h
+         return v_robust / h
 
     def get_EAR(self, landmarks):
         left = np.array([landmarks[i, :2] for i in LEFT_EYE_IDX])
@@ -145,6 +145,29 @@ def calculate_mar(lms_raw):
     h = math.hypot(left.x - right.x, left.y - right.y)
     v = math.hypot(top_mid[0] - bottom_mid[0], top_mid[1] - bottom_mid[1])
     return v / h if h > 0 else 0.0
+
+def get_mouth_features(lms_raw):
+    top_mid = (
+        (lms_raw[13].x + lms_raw[14].x) / 2,
+        (lms_raw[13].y + lms_raw[14].y) / 2,
+    )
+    bottom_mid = (
+        (lms_raw[17].x + lms_raw[18].x) / 2,
+        (lms_raw[17].y + lms_raw[18].y) / 2,
+    )
+    left = lms_raw[78]
+    right = lms_raw[308]
+
+    width = math.hypot(left.x - right.x, left.y - right.y)
+    height = math.hypot(top_mid[0] - bottom_mid[0], top_mid[1] - bottom_mid[1])
+
+    mar = height / width if width > 0 else 0.0
+
+    return {
+        "mouth_width": width,
+        "mouth_height": height,
+        "mar": mar,
+    }
 
 
 def draw_mouth_box(frame, lms_raw, frame_size, yawn_detected, mar):
