@@ -352,6 +352,7 @@ function _applyRoomCode(code) {
   sessionStorage.setItem('roomCode', code);
   const classEl = document.getElementById('inst-class-label');
   if (classEl) classEl.textContent = `멋쟁이사자처럼 · ${code}`;
+  connectCaptionTextWs();
 }
 
 function copyRoomCode() {
