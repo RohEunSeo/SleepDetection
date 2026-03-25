@@ -21,22 +21,22 @@ from sensors import (
     EAR_CALIB_RATIO,
 )
 
-EAR_DROWSY_SEC = 4.0
+EAR_DROWSY_SEC = 5.0
 PERCLOS_WINDOW = 60
 PERCLOS_WARNING = 0.20
 PERCLOS_DROWSY = 0.30
 DECAY_FACTOR = 0.9
 
 MAR_THRESH = 0.85
-MAR_FRAMES = 28
-MOE_THRESH = 2.2
+MAR_FRAMES = 14
+MOE_THRESH = 2.0
 MOE_SEC = 3.0
 
-YAW_THRESH = 15.0
-YAW_ASSIST = 10.0
-PITCH_THRESH = 20.0
-ROLL_THRESH = 20.0
-DISTRACTED_SEC = 0.7
+YAW_THRESH = 20.0
+YAW_ASSIST = 15.0
+PITCH_THRESH = 28.0
+ROLL_THRESH = 25.0
+DISTRACTED_SEC = 3.0
 HEADBANG_DELTA = 10.0
 HEADBANG_COUNT = 3
 
@@ -78,9 +78,16 @@ class AttentionScorer:
         )
 
         yaw_basic = yaw is not None and abs(yaw) > YAW_THRESH
-        yaw_assist = yaw is not None and abs(yaw) > YAW_ASSIST
+        yaw_assist = (
+            yaw is not None and abs(yaw) > YAW_ASSIST and
+            gaze is not None and gaze > GAZE_THRESH
+        )
 
-        pitch_cond = pitch is not None and abs(pitch) > PITCH_THRESH
+        # 위로 너무 들거나, 아래로 너무 많이 숙이는 경우만 산만 처리
+        pitch_cond = pitch is not None and (
+            pitch > PITCH_THRESH or pitch < -35.0
+        )
+
         roll_cond = roll is not None and abs(roll) > ROLL_THRESH
         head_cond = yaw_basic or yaw_assist or pitch_cond or roll_cond
         self.distracted_time = self._update(self.distracted_time, head_cond, elapsed)
@@ -158,7 +165,7 @@ class DrowsinessDetector:
         self.ear_thresh = ear_thresh
         self.baseline_ear = baseline_ear if baseline_ear is not None else ear_thresh / EAR_CALIB_RATIO
         # 일반 임계값보다 더 낮은, "진짜 감김" 판정용 임계값
-        self.ear_close_thresh = self.ear_thresh * 0.85
+        self.ear_close_thresh = self.ear_thresh * 0.78
 
         self.eye_det = EyeDetector()
         self.head_pose = HeadPose()
@@ -297,9 +304,9 @@ class DrowsinessDetector:
 
         yawn_candidate = (
             mar > MAR_THRESH and
-            (moe > 2.2 or perclos >= 0.10)
+            (moe > 2.0 or perclos >= 0.06)
             )
-
+        
         if yawn_candidate:
             self.mouth_frame_cnt += 1
         else:
@@ -325,10 +332,13 @@ class DrowsinessDetector:
             self.prev_pitch = pitch
             headbanging = self.headbang_cnt >= HEADBANG_COUNT and perclos >= PERCLOS_WARNING
 
-        distr = distracted or looking_away
+        distr = distracted or (looking_away and yaw is not None and abs(yaw) > 12.0)
         eye_data = {
             "is_drowsy": asleep,
-            "eyes_closed": ear < self.ear_close_thresh,
+            "eyes_closed": (
+                ear < self.ear_close_thresh and
+                self.scorer.closure_time > 0.6
+            ),
             "closed_sec": self.scorer.closure_time,
         }
         yawn_data = {
