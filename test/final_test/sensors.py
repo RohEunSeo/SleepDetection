@@ -74,16 +74,25 @@ class EyeDetector:
         self.R_IRIS = RIGHT_IRIS
 
     @staticmethod
-    def _calc_ear(eye_pts):
-        return (
-            LA.norm(eye_pts[2] - eye_pts[3]) +
-            LA.norm(eye_pts[4] - eye_pts[5])
-        ) / (2 * LA.norm(eye_pts[0] - eye_pts[1]) + 1e-6)
+     def _calc_ear(eye_pts):
+        v1 = LA.norm(eye_pts[2] - eye_pts[3])
+        v2 = LA.norm(eye_pts[4] - eye_pts[5])
+        h = LA.norm(eye_pts[0] - eye_pts[1]) + 1e-6
+     # 안경 반사/랜드마크 튐 대응:
+     # 더 작은 세로거리 쪽을 더 신뢰해서 EAR를 계산
+        v_small = min(v1, v2)
+        v_mean = (v1 + v2) / 2.0
+        v_robust = 0.7 * v_small + 0.3 * v_mean
+        
+        return v_robust / h
 
     def get_EAR(self, landmarks):
         left = np.array([landmarks[i, :2] for i in LEFT_EYE_IDX])
         right = np.array([landmarks[i, :2] for i in RIGHT_EYE_IDX])
-        return (self._calc_ear(left) + self._calc_ear(right)) / 2
+        left_ear = self._calc_ear(left)
+        right_ear = self._calc_ear(right)
+        # 작은 쪽(더 감긴 쪽)을 더 반영
+        return 0.7 * min(left_ear, right_ear) + 0.3 * ((left_ear + right_ear) / 2.0)
 
     def get_EAR_each(self, landmarks):
         left = np.array([landmarks[i, :2] for i in LEFT_EYE_IDX])
