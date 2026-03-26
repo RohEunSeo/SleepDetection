@@ -1,4 +1,4 @@
-// =============================================
+﻿// =============================================
 // student.js — Sleep2Wake 수강생 수업 화면
 // =============================================
 
@@ -8,13 +8,53 @@ const MOUTH_FRAMES   = 30;
 const HEAD_FRAMES    = 25;
 const ABSENCE_FRAMES = 30;
 const MAR_THRESH     = 0.70;
+const MAR_FRAMES     = 16;
 const HEAD_THRESH    = 15;
+const YAW_THRESH     = 20.0;
+const YAW_ASSIST     = 15.0;
+const PITCH_THRESH   = 28.0;
+const ROLL_THRESH    = 25.0;
+const GAZE_THRESH    = 0.015;
 const CALIB_FRAMES   = 90;
 const TOTAL_CHECKS   = 4;
+const PERCLOS_WINDOW_SEC = 60;
+const PERCLOS_WARNING = 0.20;
+const PERCLOS_DROWSY = 0.30;
+const MOE_THRESH = 2.0;
+const MOE_SEC = 3.0;
+const WARNING_WINDOW_MIN = 10;
+const WARNING_MAX_COUNT = 3;
+const WARNING_SEC = 15.0;
+const DROWSY_SEC = 30.0;
+const RECOVER_FOCUSED_SEC = 2.0;
+const DISTRACTED_SEC = 3.0;
+const DISTRACTED_RECOVER_SEC = 1.5;
+const ABSENT_SEC = 3.0;
+const FACE_MISSING_SLEEP_SEC = 0.5;
+const DISTRACTED_ABSENT_SEC = 6.0;
+const STARTUP_GRACE_SEC = 2.0;
+
+const STATES = {
+  FOCUSED: 'focused',
+  DISTRACTED: 'distracted',
+  WARNING: 'warning',
+  DROWSY: 'drowsy',
+  ABSENT: 'absent',
+};
+
+const STATUS_UI = {
+  [STATES.FOCUSED]:    { text: '🟢 집중',      bg: 'rgba(0,0,0,0.6)' },
+  [STATES.DISTRACTED]: { text: '🟠 주의 산만', bg: 'rgba(249,115,22,0.85)' },
+  [STATES.WARNING]:    { text: '🟡 졸음 의심', bg: 'rgba(245,158,11,0.85)' },
+  [STATES.DROWSY]:     { text: '🔴 졸음 확정', bg: 'rgba(239,68,68,0.85)' },
+  [STATES.ABSENT]:     { text: '🚶 자리 이탈', bg: 'rgba(107,114,128,0.85)' },
+};
 
 const L_EYE = [362, 385, 387, 263, 373, 380];
 const R_EYE = [33,  160, 158, 133, 153, 144];
 const MOUTH = [13,  14,  17,  18,  78,  308];
+const L_IRIS = 473;
+const R_IRIS = 468;
 
 // ── DOM ───────────────────────────────────────
 const videoEl  = document.getElementById('my-video');
@@ -32,6 +72,8 @@ let dailyCall = null;
 let ws = null;
 let captionViewerWs = null;
 let captionClearTimer = null;
+let sleepAlertInterval = null;
+let sleepAlertActive = false;
 
 // 감지 카운터
 let eyeCount = 0, mouthCount = 0, headCount = 0, absenceCount = 0;
@@ -39,9 +81,24 @@ let eyeCount = 0, mouthCount = 0, headCount = 0, absenceCount = 0;
 // 누적 이벤트 (배터리 + 뱃지)
 let drowsyCnt = 0, yawnCnt = 0, headCnt2 = 0;
 let prevEyeAlert = false, prevYawnAlert = false, prevHeadAlert = false;
+let currentState = STATES.FOCUSED;
+let eyeClosedElapsed = 0;
+let eyeOpenElapsed = 0;
+let focusedElapsed = 0;
+let distractedElapsed = 0;
+let moeElapsed = 0;
+let perclosSamples = [];
+let warningTimes = [];
+let absentStartedAt = null;
+let warningCount = 0;
+let headCalib = [];
+let headBase = { yaw: 0, pitch: 0, roll: 0 };
+let calibEndedAt = null;
+let lastDistractedAt = null;
 
 // 캘리브레이션
 let calibEars = [], isCalib = true, EAR_THRESH = 0.20;
+let calibMars = [], MAR_DYNAMIC_THRESH = MAR_THRESH;
 
 const IS_LOCAL_HOST = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const BACKEND_URL = IS_LOCAL_HOST
@@ -79,6 +136,35 @@ function connectCaptionViewer(roomCode = 'GLOBAL') {
   };
 }
 
+function speakSleepAlert() {
+  if (!('speechSynthesis' in window)) return;
+  if (speechSynthesis.speaking) return;
+  const utter = new SpeechSynthesisUtterance('졸음이 감지되었습니다.');
+  utter.lang = 'ko-KR';
+  speechSynthesis.speak(utter);
+}
+
+function startSleepAlert() {
+  if (sleepAlertActive) return;
+  sleepAlertActive = true;
+  speakSleepAlert();
+  sleepAlertInterval = setInterval(() => {
+    if (!sleepAlertActive) return;
+    speakSleepAlert();
+  }, 5000);
+}
+
+function stopSleepAlert() {
+  sleepAlertActive = false;
+  if (sleepAlertInterval) {
+    clearInterval(sleepAlertInterval);
+    sleepAlertInterval = null;
+  }
+  if ('speechSynthesis' in window) {
+    speechSynthesis.cancel();
+  }
+}
+
 // ── 계산 함수 ─────────────────────────────────
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -94,6 +180,51 @@ function calcMAR(lm, idx) {
 
 function calcTilt(lm) {
   return Math.abs(Math.atan2(lm[454].y - lm[234].y, lm[454].x - lm[234].x) * 180 / Math.PI);
+}
+
+function calcHeadPoseProxy(lm) {
+  const leftEye = lm[33];
+  const rightEye = lm[263];
+  const nose = lm[1];
+  const forehead = lm[10];
+  const chin = lm[152];
+  const mouthCenter = {
+    x: (lm[13].x + lm[14].x + lm[17].x + lm[18].x) / 4,
+    y: (lm[13].y + lm[14].y + lm[17].y + lm[18].y) / 4,
+  };
+
+  const eyeCenter = {
+    x: (leftEye.x + rightEye.x) / 2,
+    y: (leftEye.y + rightEye.y) / 2,
+  };
+
+  const faceWidth = Math.max(Math.abs(lm[454].x - lm[234].x), 1e-6);
+  const faceHeight = Math.max(Math.abs(chin.y - forehead.y), 1e-6);
+
+  const roll = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * 180 / Math.PI;
+  const yaw = ((nose.x - eyeCenter.x) / faceWidth) * 120;
+  const pitchBase = ((mouthCenter.y - eyeCenter.y) / faceHeight) - 0.18;
+  const pitch = pitchBase * 180;
+
+  return { yaw, pitch, roll };
+}
+
+function calcGazeScore(lm, eyeIdx, irisIdx) {
+  const iris = lm[irisIdx];
+  const xs = eyeIdx.map(i => lm[i].x);
+  const ys = eyeIdx.map(i => lm[i].y);
+  const eyeCenter = {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
+  const eyeWidth = Math.max(Math.max(...xs) - Math.min(...xs), 1e-6);
+  return dist(iris, eyeCenter) / (eyeWidth * 5.0);
+}
+
+function calcGazeProxy(lm) {
+  const left = calcGazeScore(lm, L_EYE, L_IRIS);
+  const right = calcGazeScore(lm, R_EYE, R_IRIS);
+  return (left + right) / 2;
 }
 
 // ── canvas 크기 동기화 ────────────────────────
@@ -152,6 +283,21 @@ function drawCalibFrame(lm) {
     calibCtx.fillText(label, ex1, Math.max(14, ey1 - 4));
   });
 
+  const mxs = MOUTH.map(i => (fx2 - lm[i].x) / fw * cw);
+  const mys = MOUTH.map(i => (lm[i].y - fy) / fh * ch);
+  const mx1 = Math.min(...mxs) - 5, my1 = Math.min(...mys) - 5;
+  const mbw = Math.max(...mxs) - Math.min(...mxs) + 10;
+  const mbh = Math.max(...mys) - Math.min(...mys) + 10;
+  const marVal = calcMAR(lm, MOUTH);
+  calibCtx.strokeStyle = '#f59e0b';
+  calibCtx.lineWidth = 2.5;
+  calibCtx.setLineDash([5, 3]);
+  calibCtx.strokeRect(mx1, my1, mbw, mbh);
+  calibCtx.setLineDash([]);
+  calibCtx.fillStyle = '#f59e0b';
+  calibCtx.font = 'bold 12px sans-serif';
+  calibCtx.fillText('입', mx1, Math.max(14, my1 - 4));
+
   const sy = (Date.now() % 1500) / 1500 * ch;
   const g  = calibCtx.createLinearGradient(0, sy - 12, 0, sy + 12);
   g.addColorStop(0, 'rgba(99,179,237,0)');
@@ -174,13 +320,22 @@ function updateBattery(eyeAlert, yawnAlert, headAlert, absent) {
   const fill = document.getElementById('battery-fill');
   const pct  = document.getElementById('battery-pct');
   if (!fill || !pct) return;
-  const penalty = drowsyCnt * 10 + yawnCnt * 5 + headCnt2 * 5;
-  const score   = Math.max(0, 100 - penalty);
+  const stateBase = {
+    [STATES.FOCUSED]: 100,
+    [STATES.DISTRACTED]: 75,
+    [STATES.WARNING]: 50,
+    [STATES.DROWSY]: 20,
+    [STATES.ABSENT]: 0,
+  }[currentState] ?? 100;
+  const score   = stateBase;
   fill.className   = 'battery-fill';
   fill.style.width = score + '%';
   pct.textContent  = score + '%';
-  if (absent || eyeAlert)           fill.classList.add('alert');
-  else if (yawnAlert || score < 60) fill.classList.add('warn');
+  if (currentState === STATES.DROWSY || currentState === STATES.ABSENT || score <= 40) {
+    fill.classList.add('alert');
+  } else if (currentState === STATES.WARNING || currentState === STATES.DISTRACTED || score <= 70) {
+    fill.classList.add('warn');
+  }
   pct.style.color = score <= 30 ? 'var(--accent-red)'
                   : score <= 60 ? 'var(--accent-yellow)'
                   : 'var(--text-secondary)';
@@ -192,20 +347,47 @@ function onResults(results) {
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
   if (!results.multiFaceLandmarks?.length) {
-    if (++absenceCount >= ABSENCE_FRAMES) setStatus('🚶 자리 이탈', 'rgba(245,158,11,0.8)');
+    const nowSec = performance.now() / 1000;
+    if (!onResults._lastFrameTs) onResults._lastFrameTs = nowSec;
+    onResults._lastFrameTs = nowSec;
+    if (absentStartedAt === null) absentStartedAt = nowSec;
+    const absentSec = nowSec - absentStartedAt;
+    if (++absenceCount >= ABSENCE_FRAMES) {
+      const recentDistractedContext =
+        lastDistractedAt !== null && (nowSec - lastDistractedAt) < DISTRACTED_RECOVER_SEC;
+      const likelyDrowsy =
+        currentState === STATES.WARNING ||
+        currentState === STATES.DROWSY ||
+        eyeClosedElapsed > 0.6 ||
+        warningCount >= WARNING_MAX_COUNT;
+
+      if (likelyDrowsy && absentSec >= FACE_MISSING_SLEEP_SEC) {
+        currentState = STATES.DROWSY;
+      } else if (absentSec >= ABSENT_SEC) {
+        currentState = STATES.ABSENT;
+      } else if (recentDistractedContext && absentSec < DISTRACTED_ABSENT_SEC) {
+        currentState = STATES.DISTRACTED;
+      }
+      setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
+    }
     return;
   }
 
   absenceCount = 0;
+  absentStartedAt = null;
   const lm     = results.multiFaceLandmarks[0];
+  const nowSec = performance.now() / 1000;
   const lEAR   = calcEAR(lm, L_EYE);
   const rEAR   = calcEAR(lm, R_EYE);
   const avgEAR = (lEAR + rEAR) / 2;
   const marVal = calcMAR(lm, MOUTH);
   const tilt   = calcTilt(lm);
+  const { yaw, pitch, roll } = calcHeadPoseProxy(lm);
+  const gaze = calcGazeProxy(lm);
 
   if (isCalib) {
     calibEars.push(avgEAR);
+    calibMars.push(marVal);
     if (calibCV.width === 0 && calibCV.offsetWidth > 0) {
       calibCV.width  = calibCV.offsetWidth;
       calibCV.height = calibCV.offsetHeight;
@@ -218,58 +400,132 @@ function onResults(results) {
     drawCalibFrame(lm);
     if (calibEars.length >= CALIB_FRAMES) {
       EAR_THRESH = (calibEars.reduce((a, b) => a + b) / calibEars.length) * 0.75;
+      if (calibMars.length > 0) {
+        const marAvg = calibMars.reduce((a, b) => a + b, 0) / calibMars.length;
+        MAR_DYNAMIC_THRESH = Math.max(0.55, Math.min(0.9, marAvg * 1.6));
+      }
+      if (headCalib.length > 0) {
+        headBase = headCalib.reduce(
+          (acc, cur) => ({
+            yaw: acc.yaw + cur.yaw / headCalib.length,
+            pitch: acc.pitch + cur.pitch / headCalib.length,
+            roll: acc.roll + cur.roll / headCalib.length,
+          }),
+          { yaw: 0, pitch: 0, roll: 0 }
+        );
+      }
       isCalib    = false;
+      calibEndedAt = performance.now() / 1000;
+      warningTimes = [];
+      warningCount = 0;
       document.getElementById('calibration-overlay').style.display = 'none';
-      console.log('캘리브레이션 완료. EAR_THRESH:', EAR_THRESH.toFixed(3));
+      console.log('캘리브레이션 완료. EAR_THRESH:', EAR_THRESH.toFixed(3), 'MAR_THRESH:', MAR_DYNAMIC_THRESH.toFixed(3));
     }
+    headCalib.push({ yaw, pitch, roll });
     return;
   }
 
+  const yawAdj = yaw - headBase.yaw;
+  const pitchAdj = pitch - headBase.pitch;
+  const rollAdj = roll - headBase.roll;
+  const startupGrace = calibEndedAt !== null && (nowSec - calibEndedAt) < STARTUP_GRACE_SEC;
+  const moe = marVal / (avgEAR + 1e-6);
+
   eyeCount   = avgEAR < EAR_THRESH  ? eyeCount + 1   : 0;
-  mouthCount = marVal > MAR_THRESH  ? mouthCount + 1 : 0;
-  headCount  = tilt   > HEAD_THRESH ? headCount + 1  : 0;
+  const yawnCandidate =
+    marVal > MAR_DYNAMIC_THRESH &&
+    Math.abs(yawAdj) <= 18 &&
+    Math.abs(rollAdj) <= 20;
+  mouthCount = yawnCandidate ? mouthCount + 1 : 0;
+  const lookingAwayNow = gaze > GAZE_THRESH;
+  const pitchDistractedNow =
+    Math.abs(pitchAdj) > PITCH_THRESH && lookingAwayNow;
+  const headDistractedNow =
+    !startupGrace && (
+      Math.abs(yawAdj) > YAW_THRESH ||
+      Math.abs(rollAdj) > ROLL_THRESH ||
+      pitchDistractedNow
+    );
+  const distractedNow = headDistractedNow || (Math.abs(yawAdj) > YAW_ASSIST && lookingAwayNow);
+  headCount  = distractedNow ? headCount + 1  : 0;
 
   const eyeAlert  = eyeCount   >= EYE_FRAMES;
-  const yawnAlert = mouthCount >= MOUTH_FRAMES;
+  const yawnAlert = mouthCount >= MAR_FRAMES;
   const headAlert = headCount  >= HEAD_FRAMES;
+  if (!onResults._lastFrameTs) onResults._lastFrameTs = nowSec;
+  const elapsedSec = Math.max(0, Math.min(nowSec - onResults._lastFrameTs, 0.25));
+  onResults._lastFrameTs = nowSec;
+
+  const eyeClosedNow = avgEAR < EAR_THRESH;
+
+  if (eyeClosedNow) {
+    eyeClosedElapsed += elapsedSec;
+    eyeOpenElapsed = 0;
+  } else {
+    eyeOpenElapsed += elapsedSec;
+    eyeClosedElapsed = 0;
+  }
+
+  if (eyeAlert || yawnAlert || distractedNow) focusedElapsed = 0;
+  else focusedElapsed += elapsedSec;
+  distractedElapsed = distractedNow ? distractedElapsed + elapsedSec : 0;
+  if (distractedNow) lastDistractedAt = nowSec;
+  moeElapsed = (moe > MOE_THRESH && marVal > MAR_DYNAMIC_THRESH && !eyeClosedNow) ? moeElapsed + elapsedSec : 0;
+  const moeAlert = moeElapsed >= MOE_SEC;
+
+  perclosSamples.push({ t: nowSec, closed: eyeClosedNow });
+  perclosSamples = perclosSamples.filter(sample => nowSec - sample.t <= PERCLOS_WINDOW_SEC);
+  const perclosClosed = perclosSamples.reduce((sum, sample) => sum + (sample.closed ? 1 : 0), 0);
+  const perclos = perclosSamples.length > 0 ? perclosClosed / perclosSamples.length : 0;
+  warningTimes = warningTimes.filter(t => nowSec - t <= WARNING_WINDOW_MIN * 60);
+  warningCount = warningTimes.length;
+  const repeatedWarningRisk = warningCount >= WARNING_MAX_COUNT;
 
   if (eyeAlert  && !prevEyeAlert)  { drowsyCnt++; updateBadge('eye',  drowsyCnt, '👁',  '졸음'); }
   if (yawnAlert && !prevYawnAlert) { yawnCnt++;   updateBadge('yawn', yawnCnt,   '👄',  '하품'); }
   if (headAlert && !prevHeadAlert) { headCnt2++;  updateBadge('head', headCnt2,  '🙆', '고개떨굼'); }
   prevEyeAlert = eyeAlert; prevYawnAlert = yawnAlert; prevHeadAlert = headAlert;
 
-  ctx.save(); ctx.scale(-1, 1); ctx.translate(-canvasEl.width, 0);
-  [[L_EYE, lEAR], [R_EYE, rEAR]].forEach(([idx, ear]) => {
-    drawBox(lm, idx, ear < EAR_THRESH ? '#ef4444' : '#10b981', ear < EAR_THRESH ? 'Closed' : 'Open');
-  });
-  drawBox(lm, MOUTH,
-    yawnAlert ? '#ef4444' : marVal > MAR_THRESH ? '#f59e0b' : '#10b981',
-    yawnAlert ? 'Yawn'    : marVal > MAR_THRESH ? 'Open'    : 'Closed');
-  ctx.restore();
+  let nextState = STATES.FOCUSED;
+  if (eyeClosedElapsed >= DROWSY_SEC || (repeatedWarningRisk && eyeClosedElapsed >= WARNING_SEC)) {
+    nextState = STATES.DROWSY;
+  } else if (currentState === STATES.DROWSY && eyeOpenElapsed < RECOVER_FOCUSED_SEC) {
+    nextState = STATES.DROWSY;
+  } else if (currentState === STATES.DROWSY && eyeOpenElapsed >= RECOVER_FOCUSED_SEC) {
+    nextState = STATES.FOCUSED;
+  } else if (eyeClosedElapsed >= WARNING_SEC || yawnAlert || moeAlert) {
+    nextState = STATES.WARNING;
+  } else if (headAlert || distractedElapsed >= DISTRACTED_SEC) {
+    nextState = STATES.DISTRACTED;
+  } else if (currentState === STATES.DISTRACTED && focusedElapsed < DISTRACTED_RECOVER_SEC) {
+    nextState = STATES.DISTRACTED;
+  }
 
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = '10px monospace';
-  ctx.fillText(`EAR:${avgEAR.toFixed(2)}  MAR:${marVal.toFixed(2)}  Tilt:${tilt.toFixed(0)}°`, 6, 14);
+  if (nextState === STATES.WARNING && currentState !== STATES.WARNING) {
+    warningTimes.push(nowSec);
+  }
+  if (nextState === STATES.FOCUSED && eyeOpenElapsed >= RECOVER_FOCUSED_SEC) {
+    warningTimes = [];
+    warningCount = 0;
+  }
+
+  currentState = nextState;
 
   const wrap = document.getElementById('tile-me');
-  if (eyeAlert) {
-    setStatus('😴 졸음 감지', 'rgba(239,68,68,0.8)');
-    wrap?.classList.add('drowsy-alert');
-  } else if (yawnAlert || headAlert) {
-    setStatus(yawnAlert ? '🥱 하품' : '😪 고개떨굼', 'rgba(245,158,11,0.8)');
-    wrap?.classList.remove('drowsy-alert');
-  } else {
-    setStatus('🟢 집중', 'rgba(0,0,0,0.6)');
-    wrap?.classList.remove('drowsy-alert');
+  setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
+  if (currentState === STATES.DROWSY) wrap?.classList.add('drowsy-alert');
+  else wrap?.classList.remove('drowsy-alert');
+
+  if (currentState === STATES.DROWSY) {
+    startSleepAlert();
+  } else if (currentState === STATES.FOCUSED) {
+    stopSleepAlert();
   }
 
   updateBattery(eyeAlert, yawnAlert, headAlert, false);
 
   if (!onResults._t || Date.now() - onResults._t > 1000) {
-    const status = eyeAlert ? 'drowsy'
-                 : absenceCount >= ABSENCE_FRAMES ? 'absent'
-                 : yawnAlert || headAlert ? 'warning' : 'focused';
-    sendDetectionData(status, avgEAR, marVal, drowsyCnt, yawnCnt, headCnt2);
+    sendDetectionData(currentState, avgEAR, marVal, drowsyCnt, yawnCnt, headCnt2);
     onResults._t = Date.now();
   }
 }
@@ -642,6 +898,7 @@ function sendDetectionData(status, ear, mar, dc, yc, hc) {
     student_id: name, name, status,
     ear: +ear.toFixed(2), mar: +mar.toFixed(2),
     drowsy_cnt: dc, yawn_cnt: yc, head_cnt: hc,
+    warning_count: warningCount,
     timestamp: Date.now()
   }));
 }
@@ -685,6 +942,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('beforeunload', () => {
+  stopSleepAlert();
   if (captionViewerWs) captionViewerWs.close();
   clearInterval(timerInterval);
 });

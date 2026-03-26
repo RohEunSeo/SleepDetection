@@ -48,7 +48,7 @@
           <input type="checkbox" class="ob-checkbox" onchange="handleCheck(this, 2)">
           <div class="ob-check-content">
             <div class="ob-check-title">👁 수업 중 AI가 집중도를 자동 측정합니다</div>
-            <div class="ob-check-desc">졸음·하품·고개 떨굼·자리 이탈을 감지하며, 강사와 매니저에게 통계로 공유됩니다</div>
+            <div class="ob-check-desc">집중력·졸음·자리 이탈을 감지하며, 강사와 매니저에게 통계로 공유됩니다</div>
           </div>
         </label>
 
@@ -74,7 +74,7 @@
           <input type="checkbox" class="ob-checkbox" onchange="handleCheck(this, 4)">
           <div class="ob-check-content">
             <div class="ob-check-title">📐 입장 직후 캘리브레이션이 진행됩니다</div>
-            <div class="ob-check-desc">약 3초간 정면을 바라봐주세요. 개인별 눈 크기 기준값을 자동으로 측정합니다</div>
+            <div class="ob-check-desc">약 3초간 정면을 바라봐주세요. 개인별 눈, 입 크기 기준값을 자동으로 측정합니다</div>
           </div>
         </label>
 
@@ -105,7 +105,7 @@
         <span class="calib-logo-text">Sleep2Wake</span>
       </div>
       <div class="calib-title">👁 집중도 보정 중</div>
-      <div class="calib-sub">정면을 바라봐주세요 — 개인별 눈 크기 기준값을 측정합니다</div>
+      <div class="calib-sub">정면을 바라봐주세요 — 개인별 눈과 입 크기 기준값을 측정합니다</div>
       <div class="calib-preview-wrap">
         <video id="calib-video" autoplay muted playsinline></video>
         <canvas id="calib-canvas"></canvas>
@@ -130,12 +130,6 @@
       </div>
       <span class="topbar-class">멋쟁이사자처럼 AI 과정</span>
     </div>
-    <div class="topbar-right">
-      <div class="detect-badges">
-        <span class="detect-badge" id="badge-eye">👁 졸음 0회</span>
-        <span class="detect-badge" id="badge-yawn">👄 하품 0회</span>
-        <span class="detect-badge" id="badge-head">🙆 고개떨굼 0회</span>
-      </div>
       <div class="battery-wrap">
         <span class="battery-label">집중도</span>
         <div class="battery-icon">
