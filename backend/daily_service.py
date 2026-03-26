@@ -32,8 +32,9 @@ def _headers() -> dict:
 
 async def ensure_room(room_code: str) -> dict:
     """
-    방이 없으면 생성, 있으면 그대로 반환
-    - 강사만 화면 공유 가능 (owner_only_broadcast)
+    방이 없으면 생성, 있으면 owner_only_broadcast 설정 업데이트 후 반환
+    - 모든 참여자 영상/음성 송출 가능
+    - 화면 공유는 강사(owner)만 가능
     """
     room_name = room_code.lower()
 
@@ -43,6 +44,18 @@ async def ensure_room(room_code: str) -> dict:
             headers=_headers()
         )
         if r.status_code == 200:
+            # [수정] 기존 방도 owner_only_broadcast: false 로 업데이트
+            await client.post(
+                f"{DAILY_BASE_URL}/rooms/{room_name}",
+                headers=_headers(),
+                json={
+                    "properties": {
+                        "owner_only_broadcast": False,
+                        "start_video_off": False,
+                        "start_audio_off": True,
+                    }
+                },
+            )
             return r.json()
 
         r = await client.post(
@@ -54,9 +67,9 @@ async def ensure_room(room_code: str) -> dict:
                     "max_participants":     ROOM_MAX_PARTICIPANTS,
                     "enable_chat":          True,
                     "enable_screenshare":   True,
-                    "owner_only_broadcast": True,   # 강사(owner)만 화면 공유 가능
+                    "owner_only_broadcast": False,
                     "start_video_off":      False,
-                    "start_audio_off":      False,
+                    "start_audio_off":      True,
                 },
             },
         )
@@ -73,7 +86,7 @@ async def create_meeting_token(
     """
     Daily.co 입장 토큰 발급
     - is_owner=True (강사): 화면 공유 가능
-    - is_owner=False (학생): 화면 공유 불가
+    - is_owner=False (학생): 영상 송출 가능, 화면 공유 불가
     """
     async with httpx.AsyncClient() as client:
         r = await client.post(
@@ -81,10 +94,10 @@ async def create_meeting_token(
             headers=_headers(),
             json={
                 "properties": {
-                    "room_name":       room_code.lower(),
-                    "user_name":       user_name,
-                    "is_owner":        is_owner,
-                    "enable_screenshare": is_owner,  # 강사만 화면 공유 허용
+                    "room_name":          room_code.lower(),
+                    "user_name":          user_name,
+                    "is_owner":           is_owner,
+                    "enable_screenshare": is_owner,
                     "exp": int(datetime.now().timestamp()) + ROOM_TOKEN_EXPIRE_SEC,
                 }
             },

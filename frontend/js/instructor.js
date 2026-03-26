@@ -16,21 +16,20 @@ let elapsed = 0;
 let timerInterval;
 let micOn = true, camOn = true, screenOn = false;
 
-// Daily.co 인스턴스
 let dailyCall = null;
-
-// WebSocket
 let ws = null;
 let captionViewerWs = null;
 let captionTextWs = null;
 
-// 로컬 미디어 / STT 상태
 let localMediaStream = null;
 let currentRoomCode = 'GLOBAL';
 let captionClearTimer = null;
 let captionRecognition = null;
 let captionRecognitionRunning = false;
 let lastCaptionSentText = '';
+
+// [수정] Daily.co participant → session_id 매핑 (영상 타일 관리용)
+const participantVideoMap = {};
 
 function getWsBaseUrl() {
   return BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
@@ -39,11 +38,9 @@ function getWsBaseUrl() {
 function renderCaption(text, speaker = '강사', isFinal = true) {
   const captionEl = document.getElementById('inst-live-caption');
   if (!captionEl) return;
-
   captionEl.textContent = `${speaker}: ${text}`;
   captionEl.classList.add('show');
   captionEl.classList.toggle('interim', !isFinal);
-
   clearTimeout(captionClearTimer);
   captionClearTimer = setTimeout(() => {
     captionEl.classList.remove('show');
@@ -56,23 +53,23 @@ function getSpeechRecognitionCtor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-// Web Speech API가 인식한 텍스트를 백엔드로 보내 학생/강사 화면 자막을 동기화한다.
 function connectCaptionTextWs() {
   if (captionTextWs) captionTextWs.close();
-
   const userName = sessionStorage.getItem('userName') || '강사';
+  const roomCode = sessionStorage.getItem('roomCode') || currentRoomCode || 'GLOBAL';
   captionTextWs = new WebSocket(
-    `${getWsBaseUrl()}/ws/caption-text?speaker=${encodeURIComponent(userName)}`
+    `${getWsBaseUrl()}/ws/caption-text?speaker=${encodeURIComponent(userName)}&room_code=${encodeURIComponent(roomCode)}`
   );
+  captionTextWs.onclose = () => {
+    if (micOn) setTimeout(connectCaptionTextWs, 2000);
+  };
 }
 
 function sendCaptionText(text, isFinal = false) {
   if (!text || !captionTextWs || captionTextWs.readyState !== WebSocket.OPEN) return;
-
   const normalized = text.trim();
   if (!normalized) return;
   if (normalized === lastCaptionSentText && !isFinal) return;
-
   lastCaptionSentText = normalized;
   captionTextWs.send(JSON.stringify({
     text: normalized,
@@ -83,21 +80,17 @@ function sendCaptionText(text, isFinal = false) {
 
 function stopBrowserCaptionRecognition() {
   if (!captionRecognition) return;
-
   captionRecognition.onresult = null;
   captionRecognition.onerror = null;
   captionRecognition.onend = null;
-
   if (captionRecognitionRunning) captionRecognition.stop();
   captionRecognitionRunning = false;
   captionRecognition = null;
 }
 
-// 메인 STT 경로: 강사 브라우저가 직접 음성을 텍스트로 변환한다.
 function startBrowserCaptionRecognition() {
   const RecognitionCtor = getSpeechRecognitionCtor();
   if (!RecognitionCtor) return false;
-
   connectCaptionTextWs();
 
   captionRecognition = new RecognitionCtor();
@@ -107,29 +100,17 @@ function startBrowserCaptionRecognition() {
   captionRecognition.maxAlternatives = 1;
 
   captionRecognition.onresult = (event) => {
-    let interimText = '';
-    let finalText = '';
-
+    let interimText = '', finalText = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0]?.transcript?.trim() || '';
       if (!transcript) continue;
-
       if (event.results[i].isFinal) finalText += `${transcript} `;
       else interimText += `${transcript} `;
     }
-
     const interimNormalized = interimText.trim();
-    const finalNormalized = finalText.trim();
-
-    if (interimNormalized) {
-      renderCaption(interimNormalized, '강사', false);
-      sendCaptionText(interimNormalized, false);
-    }
-
-    if (finalNormalized) {
-      renderCaption(finalNormalized, '강사', true);
-      sendCaptionText(finalNormalized, true);
-    }
+    const finalNormalized   = finalText.trim();
+    if (interimNormalized) { renderCaption(interimNormalized, '강사', false); sendCaptionText(interimNormalized, false); }
+    if (finalNormalized)   { renderCaption(finalNormalized,   '강사', true);  sendCaptionText(finalNormalized,   true);  }
   };
 
   captionRecognition.onerror = (event) => {
@@ -140,11 +121,7 @@ function startBrowserCaptionRecognition() {
   captionRecognition.onend = () => {
     captionRecognitionRunning = false;
     if (!micOn) return;
-
-    try {
-      captionRecognition.start();
-      captionRecognitionRunning = true;
-    } catch {}
+    try { captionRecognition.start(); captionRecognitionRunning = true; } catch {}
   };
 
   try {
@@ -161,11 +138,9 @@ function startBrowserCaptionRecognition() {
 
 function connectCaptionViewer(roomCode = 'GLOBAL') {
   if (captionViewerWs) captionViewerWs.close();
-
   const path = roomCode === 'GLOBAL'
     ? `${getWsBaseUrl()}/ws/caption-view`
     : `${getWsBaseUrl()}/ws/caption-view/${encodeURIComponent(roomCode)}`;
-
   captionViewerWs = new WebSocket(path);
   captionViewerWs.onmessage = (event) => {
     const payload = JSON.parse(event.data);
@@ -184,18 +159,16 @@ function stopCaptionStreaming() {
 function connectCaptionUploader(roomCode = 'GLOBAL') {
   currentRoomCode = roomCode;
   stopCaptionStreaming();
-
   if (startBrowserCaptionRecognition()) {
     console.log('자막 경로: browser speech recognition');
     return;
   }
-
-  console.warn('이 브라우저는 Web Speech API를 지원하지 않아 자막 기능을 사용할 수 없습니다.');
+  console.warn('이 브라우저는 Web Speech API를 지원하지 않습니다.');
 }
 
 function connectWS() {
   try {
-    ws = new WebSocket(`${BACKEND_URL.replace('http', 'ws')}/ws/admin`);
+    ws = new WebSocket(`${getWsBaseUrl()}/ws/admin`);
     ws.onopen = () => console.log('강사 WS 연결됨');
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -223,26 +196,22 @@ function loadDemoStudents() {
 }
 
 function updateStats() {
-  const list = Object.values(students);
-  const total = list.length;
-  const focused = list.filter((s) => s.status === 'focused').length;
-  const alerts = list.filter((s) => s.status === 'drowsy' || s.status === 'absent').length;
-  const avg = total > 0 ? Math.round((focused / total) * 100) : 0;
+  const list    = Object.values(students);
+  const total   = list.length;
+  const focused = list.filter(s => s.status === 'focused').length;
+  const alerts  = list.filter(s => s.status === 'drowsy' || s.status === 'absent').length;
+  const avg     = total > 0 ? Math.round((focused / total) * 100) : 0;
 
   document.getElementById('inst-total').textContent = total;
   document.getElementById('inst-focus').textContent = focused;
   document.getElementById('inst-alert').textContent = alerts;
 
   const fill = document.getElementById('class-focus-fill');
-  const pct = document.getElementById('class-focus-pct');
+  const pct  = document.getElementById('class-focus-pct');
   if (fill) fill.style.width = `${avg}%`;
   if (pct) {
     pct.textContent = `${avg}%`;
-    pct.style.color = avg >= 70
-      ? 'var(--accent-green)'
-      : avg >= 40
-        ? 'var(--accent-yellow)'
-        : 'var(--accent-red)';
+    pct.style.color = avg >= 70 ? 'var(--accent-green)' : avg >= 40 ? 'var(--accent-yellow)' : 'var(--accent-red)';
   }
 
   const stretchBtn = document.getElementById('stretch-btn');
@@ -250,7 +219,7 @@ function updateStats() {
 }
 
 function renderStudentGrid() {
-  const list = Object.values(students);
+  const list  = Object.values(students);
   const start = rotationIdx * ROTATION_SIZE;
   const slice = list.slice(start, start + ROTATION_SIZE);
   const pages = Math.max(1, Math.ceil(list.length / ROTATION_SIZE));
@@ -260,40 +229,81 @@ function renderStudentGrid() {
   const grid = document.getElementById('inst-student-grid');
   if (!grid) return;
 
-  grid.innerHTML = slice.map((s) => {
-    const penalty = (s.drowsy_cnt || 0) * 10 + (s.yawn_cnt || 0) * 5 + (s.head_cnt || 0) * 5;
-    const score = Math.max(0, 100 - penalty);
+  // [수정] innerHTML 통째 교체 대신 DOM diff — 기존 타일 재사용해서 깜빡임 방지
+  const existingIds = new Set([...grid.querySelectorAll('.inst-student-tile[id]')].map(el => el.id));
+  const neededIds   = new Set(slice.map(s => `tile-${s.student_id}`));
+
+  // 필요없는 타일 제거
+  existingIds.forEach(id => {
+    if (!neededIds.has(id)) document.getElementById(id)?.remove();
+  });
+
+  // 빈 슬롯 제거
+  grid.querySelectorAll('.inst-student-tile:not([id])').forEach(el => el.remove());
+
+  // 학생 타일 추가/업데이트
+  slice.forEach((s, idx) => {
+    const sid      = s.student_id;
+    const penalty  = (s.drowsy_cnt || 0) * 10 + (s.yawn_cnt || 0) * 5 + (s.head_cnt || 0) * 5;
+    const score    = Math.max(0, 100 - penalty);
     const barClass = score <= 30 ? 'alert' : score <= 60 ? 'warn' : '';
-    const bgColor = s.status === 'drowsy' || s.status === 'absent'
-      ? 'rgba(239,68,68,0.25)'
-      : 'rgba(255,123,0,0.2)';
-    const initial = (s.name || s.student_id || '?').charAt(0);
+    const bgColor  = s.status === 'drowsy' || s.status === 'absent' ? 'rgba(239,68,68,0.25)' : 'rgba(255,123,0,0.2)';
+    const initial  = (s.name || s.student_id || '?').charAt(0);
 
-    return `
-    <div class="inst-student-tile">
-      <div class="inst-student-fallback">
-        <div class="inst-peer-avatar" style="background:${bgColor}">${initial}</div>
-        <div class="inst-peer-name">${s.name || s.student_id}</div>
-      </div>
-      <div class="tile-battery-overlay">
-        <div class="tile-battery-icon">
-          <div class="tile-battery-bar ${barClass}" style="width:${score}%"></div>
+    let tile = document.getElementById(`tile-${sid}`);
+    if (!tile) {
+      // 새 타일 생성
+      tile = document.createElement('div');
+      tile.className = 'inst-student-tile';
+      tile.id = `tile-${sid}`;
+      tile.innerHTML = `
+        <video class="inst-student-video" id="video-${sid}" autoplay muted playsinline
+               style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;"></video>
+        <div class="inst-student-fallback" id="fallback-${sid}">
+          <div class="inst-peer-avatar" style="background:${bgColor}">${initial}</div>
+          <div class="inst-peer-name">${s.name || s.student_id}</div>
         </div>
-      </div>
-      <div class="tile-student-label">${s.name || s.student_id}</div>
-    </div>`;
-  }).join('');
+        <div class="tile-battery-overlay">
+          <div class="tile-battery-icon">
+            <div class="tile-battery-bar ${barClass}" id="bar-${sid}" style="width:${score}%"></div>
+          </div>
+        </div>
+        <div class="tile-student-label">${s.name || s.student_id}</div>`;
+      grid.appendChild(tile);
+      // 트랙 연결
+      if (participantVideoMap[sid]) attachStudentVideo(sid, participantVideoMap[sid]);
+    } else {
+      // 기존 타일 업데이트 (배터리만 갱신, video 태그 건드리지 않음)
+      const bar = document.getElementById(`bar-${sid}`);
+      if (bar) { bar.style.width = `${score}%`; bar.className = `tile-battery-bar ${barClass}`; }
+      const fallback = document.getElementById(`fallback-${sid}`);
+      if (fallback) fallback.querySelector('.inst-peer-avatar')?.setAttribute('style', `background:${bgColor}`);
+    }
+  });
 
+  // 빈 슬롯 채우기
   const empty = ROTATION_SIZE - slice.length;
   for (let i = 0; i < empty; i++) {
-    grid.innerHTML += `
-    <div class="inst-student-tile">
+    const el = document.createElement('div');
+    el.className = 'inst-student-tile';
+    el.innerHTML = `
       <div class="inst-student-fallback">
         <div style="font-size:20px;opacity:0.2">👤</div>
         <div class="inst-peer-name" style="opacity:0.3">대기 중</div>
-      </div>
-    </div>`;
+      </div>`;
+    grid.appendChild(el);
   }
+}
+
+// [수정] 학생 video 태그에 트랙 연결하는 헬퍼
+function attachStudentVideo(sid, track) {
+  const videoEl    = document.getElementById(`video-${sid}`);
+  const fallbackEl = document.getElementById(`fallback-${sid}`);
+  if (!videoEl) return;
+
+  videoEl.srcObject = new MediaStream([track]);
+  videoEl.style.display = 'block';
+  if (fallbackEl) fallbackEl.style.display = 'none';
 }
 
 function startRotation() {
@@ -305,18 +315,16 @@ function startRotation() {
   }, 5000);
 }
 
-function toggleRotation(on) {
-  rotationOn = on;
-}
+function toggleRotation(on) { rotationOn = on; }
 
 function suggestStretch() {
   showToast('💪 스트레칭 시간! 잠깐 쉬어가요 🧘');
 }
 
 async function createRoom() {
-  const btn = document.getElementById('create-room-btn');
+  const btn      = document.getElementById('create-room-btn');
   const userName = sessionStorage.getItem('userName') || '강사';
-  btn.disabled = true;
+  btn.disabled   = true;
   btn.textContent = '생성 중...';
 
   try {
@@ -326,7 +334,6 @@ async function createRoom() {
     );
     if (!res.ok) throw new Error('방 생성 실패');
     const { room_code, token, room_url } = await res.json();
-
     _applyRoomCode(room_code);
     await joinDailyRoom(userName, token, room_url);
     showToast(`✅ 과정 코드: ${room_code} - 학생들에게 공유해주세요!`);
@@ -335,7 +342,7 @@ async function createRoom() {
     _applyRoomCode('LION-2025');
     showToast('과정 코드: LION-2025 (로컬 테스트 모드)');
   } finally {
-    btn.disabled = false;
+    btn.disabled    = false;
     btn.textContent = '방 생성';
   }
 }
@@ -344,10 +351,11 @@ function _applyRoomCode(code) {
   currentRoomCode = code;
   document.getElementById('rcd-code-text').textContent = code;
   document.getElementById('room-code-display').style.display = 'flex';
-  document.getElementById('create-room-btn').style.display = 'none';
+  document.getElementById('create-room-btn').style.display   = 'none';
   sessionStorage.setItem('roomCode', code);
   const classEl = document.getElementById('inst-class-label');
   if (classEl) classEl.textContent = `멋쟁이사자처럼 · ${code}`;
+  connectCaptionTextWs();
 }
 
 function copyRoomCode() {
@@ -374,15 +382,68 @@ async function joinDailyRoom(userName, token, roomUrl) {
     await dailyCall.join({ url: roomUrl, token });
 
     dailyCall
-      .on('started-camera', () => console.log('카메라 시작'))
-      .on('track-started', handleTrackStarted)
-      .on('track-stopped', handleTrackStopped)
-      .on('participant-joined', (e) => console.log('참여:', e.participant.user_name))
-      .on('participant-left', (e) => console.log('퇴장:', e.participant.user_name));
+      .on('started-camera',     () => console.log('카메라 시작'))
+      .on('track-started',      handleTrackStarted)
+      .on('track-stopped',      handleTrackStopped)
+      // [수정] 학생 입장/퇴장 처리
+      .on('participant-joined', onParticipantJoined)
+      .on('participant-left',   onParticipantLeft);
 
     console.log('Daily.co 강사 입장 완료');
   } catch (e) {
     console.warn('Daily.co 연결 실패:', e.message);
+  }
+}
+
+// [수정] 학생 입장 — WS students 객체에 추가 + 그리드 갱신
+function onParticipantJoined(e) {
+  if (e.participant.local) return;
+  const { session_id: sid, user_name: name = '참여자' } = e.participant;
+  console.log('학생 입장:', name);
+
+  if (!students[name]) {
+    students[name] = { student_id: name, name, status: 'focused', drowsy_cnt: 0, yawn_cnt: 0, head_cnt: 0 };
+  }
+  updateStats();
+  renderStudentGrid();
+}
+
+// [수정] 학생 퇴장 — students 객체에서 제거 + 그리드 갱신
+function onParticipantLeft(e) {
+  const { session_id: sid, user_name: name = '' } = e.participant;
+  console.log('학생 퇴장:', name);
+  delete students[name];
+  delete participantVideoMap[name];
+  updateStats();
+  renderStudentGrid();
+}
+
+// [수정] 트랙 시작 — 학생 video 태그에 영상 연결
+function handleTrackStarted(e) {
+  if (e.participant.local) return;
+
+  if (e.track.kind === 'video' && e.participant.screen) {
+    // 화면 공유 트랙
+    const screenVideo = document.getElementById('screen-video');
+    if (screenVideo) {
+      screenVideo.srcObject = new MediaStream([e.track]);
+      screenVideo.style.display = 'block';
+      document.getElementById('inst-video').style.display = 'none';
+    }
+    return;
+  }
+
+  if (e.track.kind === 'video' && !e.participant.screen) {
+    // 학생 웹캠 트랙
+    const name = e.participant.user_name || '';
+    participantVideoMap[name] = e.track;
+    attachStudentVideo(name, e.track);
+  }
+}
+
+function handleTrackStopped(e) {
+  if (e.track.kind === 'video' && e.participant?.screen) {
+    stopScreenShare();
   }
 }
 
@@ -394,24 +455,21 @@ async function toggleScreenShare() {
       if (dailyCall) {
         await dailyCall.startScreenShare();
       } else {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const stream      = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const screenVideo = document.getElementById('screen-video');
         screenVideo.srcObject = stream;
         screenVideo.style.display = 'block';
         document.getElementById('inst-video').style.display = 'none';
         stream.getVideoTracks()[0].onended = () => stopScreenShare();
       }
-
       screenOn = true;
-      btn.querySelector('.icon').textContent = '🖥️';
+      btn.querySelector('.icon').textContent  = '🖥️';
       btn.querySelector('.label').textContent = '공유 중지';
       btn.classList.add('screen-active');
       document.getElementById('screen-share-badge').style.display = 'block';
       document.getElementById('inst-main-label').textContent = '🖥️ 화면 공유 중';
     } catch (e) {
-      if (e.name !== 'NotAllowedError') {
-        showToast('화면 공유를 시작할 수 없습니다.');
-      }
+      if (e.name !== 'NotAllowedError') showToast('화면 공유를 시작할 수 없습니다.');
     }
   } else {
     stopScreenShare();
@@ -423,78 +481,50 @@ function stopScreenShare() {
     dailyCall.stopScreenShare();
   } else {
     const screenVideo = document.getElementById('screen-video');
-    screenVideo.srcObject?.getTracks().forEach((t) => t.stop());
+    screenVideo.srcObject?.getTracks().forEach(t => t.stop());
     screenVideo.style.display = 'none';
     document.getElementById('inst-video').style.display = camOn ? 'block' : 'none';
   }
-
   screenOn = false;
   const btn = document.getElementById('screen-share-btn');
-  btn.querySelector('.icon').textContent = '🖥️';
+  btn.querySelector('.icon').textContent  = '🖥️';
   btn.querySelector('.label').textContent = '화면 공유';
   btn.classList.remove('screen-active');
   document.getElementById('screen-share-badge').style.display = 'none';
   document.getElementById('inst-main-label').textContent = '🎓 강사 (나)';
 }
 
-function handleTrackStarted(e) {
-  if (e.track.kind === 'video' && e.participant?.screen) {
-    const screenVideo = document.getElementById('screen-video');
-    screenVideo.srcObject = new MediaStream([e.track]);
-    screenVideo.style.display = 'block';
-    document.getElementById('inst-video').style.display = 'none';
-  }
-}
-
-function handleTrackStopped(e) {
-  if (e.track.kind === 'video' && e.participant?.screen) {
-    stopScreenShare();
-  }
-}
-
 async function startCamera() {
   try {
-    // STT 정확도를 위해 에코 제거 / 노이즈 억제 / 자동 게인 보정을 켠다.
     const stream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true,
+        autoGainControl:  true,
         channelCount: 1,
-        sampleRate: 16000,
-        sampleSize: 16,
+        sampleRate:   16000,
+        sampleSize:   16,
       }
     });
-
     localMediaStream = stream;
-    const audioTrack = stream.getAudioTracks()[0];
-    if (audioTrack?.getSettings) {
-      console.log('마이크 설정:', audioTrack.getSettings());
-    }
-
     document.getElementById('inst-video').srcObject = stream;
     document.getElementById('inst-cam-off').style.display = 'none';
     connectCaptionUploader(currentRoomCode);
   } catch {
-    document.getElementById('inst-cam-off').style.display = 'flex';
-    document.getElementById('inst-video').style.display = 'none';
+    document.getElementById('inst-cam-off').style.display    = 'flex';
+    document.getElementById('inst-video').style.display      = 'none';
   }
 }
 
 function toggleMic() {
   micOn = !micOn;
   if (dailyCall) dailyCall.setLocalAudio(micOn);
-  localMediaStream?.getAudioTracks().forEach((track) => { track.enabled = micOn; });
-
-  if (!micOn) {
-    stopBrowserCaptionRecognition();
-  } else if (!captionRecognitionRunning) {
-    startBrowserCaptionRecognition();
-  }
-
+  localMediaStream?.getAudioTracks().forEach(track => { track.enabled = micOn; });
+  if (!micOn) { stopBrowserCaptionRecognition(); }
+  else if (!captionRecognitionRunning) { startBrowserCaptionRecognition(); }
   const btn = document.getElementById('inst-mic-btn');
-  btn.querySelector('.icon').textContent = micOn ? '🎙️' : '🔇';
+  btn.querySelector('.icon').textContent  = micOn ? '🎙️' : '🔇';
   btn.querySelector('.label').textContent = micOn ? '마이크' : '음소거';
   btn.classList.toggle('off', !micOn);
 }
@@ -502,15 +532,13 @@ function toggleMic() {
 function toggleCam() {
   camOn = !camOn;
   if (dailyCall) dailyCall.setLocalVideo(camOn);
-
   const btn = document.getElementById('inst-cam-btn');
-  btn.querySelector('.icon').textContent = camOn ? '📹' : '📷';
+  btn.querySelector('.icon').textContent  = camOn ? '📹' : '📷';
   btn.querySelector('.label').textContent = camOn ? '카메라' : '카메라 꺼짐';
   btn.classList.toggle('off', !camOn);
-
   if (!screenOn) {
-    document.getElementById('inst-video').style.display = camOn ? 'block' : 'none';
-    document.getElementById('inst-cam-off').style.display = camOn ? 'none' : 'flex';
+    document.getElementById('inst-video').style.display    = camOn ? 'block' : 'none';
+    document.getElementById('inst-cam-off').style.display  = camOn ? 'none'  : 'flex';
   }
 }
 
@@ -522,19 +550,25 @@ function startTimer() {
   }, 1000);
 }
 
-function leaveRoom() {
+// [수정] 수업 종료 — 백엔드에 room_closed broadcast 요청
+async function leaveRoom() {
+  try {
+    const roomCode = sessionStorage.getItem('roomCode') || currentRoomCode;
+    await fetch(`${BACKEND_URL}/api/room/close?room_code=${encodeURIComponent(roomCode)}`, {
+      method: 'POST'
+    });
+  } catch {}
+
   dailyCall?.leave();
   stopCaptionStreaming();
   if (captionViewerWs) captionViewerWs.close();
-  localMediaStream?.getTracks().forEach((track) => track.stop());
+  localMediaStream?.getTracks().forEach(track => track.stop());
   clearInterval(timerInterval);
   clearInterval(rotInterval);
   goTo('login');
 }
 
-function goReport() {
-  goTo('report');
-}
+function goReport() { goTo('report'); }
 
 window.addEventListener('DOMContentLoaded', () => {
   const userName = sessionStorage.getItem('userName') || '강사';
@@ -556,7 +590,7 @@ window.addEventListener('beforeunload', () => {
   dailyCall?.leave();
   stopCaptionStreaming();
   if (captionViewerWs) captionViewerWs.close();
-  localMediaStream?.getTracks().forEach((track) => track.stop());
+  localMediaStream?.getTracks().forEach(track => track.stop());
   clearInterval(timerInterval);
   clearInterval(rotInterval);
 });

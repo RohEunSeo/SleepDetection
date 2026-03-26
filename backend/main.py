@@ -65,9 +65,21 @@ async def admin_ws(websocket: WebSocket):
         manager.disconnect_admin(websocket)
 
 
+# [수정] 수업 종료 엔드포인트 — 모든 학생에게 room_closed 신호 broadcast
+@app.post("/api/room/close")
+async def close_room(room_code: str = "LION-2025"):
+    await manager.broadcast_to_students(
+        {
+            "type": "room_closed",
+            "room_code": room_code,
+        }
+    )
+    store.end_session(room_code)
+    return {"status": "closed", "room_code": room_code}
+
+
 @app.websocket("/ws/caption-view/{room_code}")
 async def caption_view_ws(websocket: WebSocket, room_code: str):
-    # 학생/강사 화면은 이 viewer 채널을 통해 자막을 실시간으로 받는다.
     await caption_manager.connect_viewer(room_code, websocket)
     try:
         while True:
@@ -87,9 +99,9 @@ async def caption_view_default_ws(websocket: WebSocket):
 
 
 @app.websocket("/ws/caption-text")
-async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사"):
-    # Web Speech API가 인식한 텍스트를 받아 강사/학생 화면에 그대로 중계한다.
+async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사", room_code: str = "GLOBAL"):
     await websocket.accept()
+    channel = room_code if room_code != "GLOBAL" else DEFAULT_CAPTION_CHANNEL
     try:
         while True:
             raw = await websocket.receive_text()
@@ -99,10 +111,10 @@ async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사")
                 continue
 
             await caption_manager.broadcast(
-                DEFAULT_CAPTION_CHANNEL,
+                channel,
                 {
                     "type": "caption",
-                    "room_code": DEFAULT_CAPTION_CHANNEL,
+                    "room_code": channel,
                     "speaker": payload.get("speaker") or speaker,
                     "text": text,
                     "final": bool(payload.get("final", False)),
