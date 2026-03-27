@@ -2,6 +2,7 @@ import json
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from caption_manager import caption_manager
 from config import ALLOWED_ORIGINS
@@ -35,24 +36,41 @@ async def student_ws(websocket: WebSocket, student_id: str, room_code: str = "LI
         while True:
             raw = await websocket.receive_text()
             data = json.loads(raw)
+            msg_type = data.get("type", "detection")
 
-            manager.update_state(student_id, data)
-            store.add_event(room_code, data)
+            # ── 채팅 메시지 ──────────────────────────
+            if msg_type == "chat":
+                await manager.broadcast_to_all({
+                    "type":      "chat",
+                    "sender":    data.get("sender", student_id),
+                    "text":      data.get("text", ""),
+                    "role":      "student",
+                    "timestamp": data.get("timestamp", ""),
+                })
 
-            await manager.broadcast_to_admins(
-                {
+            # ── 손들기 ───────────────────────────────
+            elif msg_type == "hand_raise":
+                await manager.broadcast_to_all({
+                    "type":   "hand_raise",
+                    "sender": data.get("sender", student_id),
+                    "role":   "student",
+                })
+
+            # ── 감지 데이터 (기존) ────────────────────
+            else:
+                manager.update_state(student_id, data)
+                store.add_event(room_code, data)
+                await manager.broadcast_to_admins({
                     "type": "student_update",
                     "data": data,
-                }
-            )
+                })
+
     except WebSocketDisconnect:
         manager.disconnect_student(student_id)
-        await manager.broadcast_to_admins(
-            {
-                "type": "student_left",
-                "student_id": student_id,
-            }
-        )
+        await manager.broadcast_to_admins({
+            "type":       "student_left",
+            "student_id": student_id,
+        })
 
 
 @app.websocket("/ws/admin")
@@ -60,7 +78,23 @@ async def admin_ws(websocket: WebSocket):
     await manager.connect_admin(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+            try:
+                data = json.loads(raw)
+                msg_type = data.get("type", "")
+
+                # ── 강사 채팅 → 전체 broadcast ──────────
+                if msg_type == "chat":
+                    await manager.broadcast_to_all({
+                        "type":      "chat",
+                        "sender":    data.get("sender", "강사"),
+                        "text":      data.get("text", ""),
+                        "role":      "instructor",
+                        "timestamp": data.get("timestamp", ""),
+                    })
+            except Exception:
+                pass
+
     except WebSocketDisconnect:
         manager.disconnect_admin(websocket)
 
@@ -122,3 +156,20 @@ async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사",
             )
     except (WebSocketDisconnect, RuntimeError):
         return
+
+@app.post("/api/stretch")
+async def stretch(room_code: str = "LION-2025"):
+    await manager.broadcast_to_students({"type": "stretch_start"})
+    return {"status": "ok"}
+
+@app.post("/api/break/start")
+async def break_start(duration: int = 300):
+    await manager.broadcast_to_students({"type": "break_start", "duration": duration})
+    return {"status": "ok"}
+
+@app.post("/api/break/end")
+async def break_end():
+    await manager.broadcast_to_students({"type": "break_end"})
+    return {"status": "ok"}
+
+app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
