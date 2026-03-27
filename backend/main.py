@@ -1,4 +1,5 @@
 import json
+import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -172,4 +173,6 @@ async def break_end():
     await manager.broadcast_to_students({"type": "break_end"})
     return {"status": "ok"}
 
-app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
+frontend_path = os.path.join(os.path.dirname(__file__), '..', 'frontend')
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
