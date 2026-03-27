@@ -68,6 +68,26 @@ class ConnectionManager:
         for student_id in dead:
             self.students.pop(student_id, None)
 
+    async def broadcast_to_all(self, message: dict):
+        """학생 + 강사(admin) 전체에게 broadcast"""
+        dead_students = []
+        for student_id, ws in self.students.items():
+            try:
+                await self._send(ws, message)
+            except Exception:
+                dead_students.append(student_id)
+        for sid in dead_students:
+            self.students.pop(sid, None)
+
+        dead_admins = []
+        for ws in self.admins:
+            try:
+                await self._send(ws, message)
+            except Exception:
+                dead_admins.append(ws)
+        for ws in dead_admins:
+            self.admins.remove(ws)
+
     # ── 내부 헬퍼 ───────────────────────────
     @staticmethod
     async def _send(ws: WebSocket, message: dict):
