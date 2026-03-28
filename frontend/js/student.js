@@ -1,5 +1,5 @@
-﻿// =============================================
-// student.js — Sleep2Wake 수강생 수업 화면
+// =============================================
+// student.js — Sleep2Wake 수강생 수업 화면 (최종 통합본)
 // =============================================
 
 // ── 상수 ──────────────────────────────────────
@@ -17,11 +17,13 @@ const ROLL_THRESH    = 25.0;
 const GAZE_THRESH    = 0.015;
 const CALIB_FRAMES   = 90;
 const TOTAL_CHECKS   = 4;
+
 const PERCLOS_WINDOW_SEC = 60;
 const PERCLOS_WARNING = 0.20;
 const PERCLOS_DROWSY = 0.30;
 const MOE_THRESH = 2.0;
 const MOE_SEC = 3.0;
+
 const WARNING_WINDOW_MIN = 10;
 const WARNING_MAX_COUNT = 3;
 const WARNING_SEC = 15.0;
@@ -34,6 +36,7 @@ const FACE_MISSING_SLEEP_SEC = 0.5;
 const DISTRACTED_ABSENT_SEC = 6.0;
 const STARTUP_GRACE_SEC = 2.0;
 
+// ── 5단계 상태 정의 ───────────────────────────
 const STATES = {
   FOCUSED: 'focused',
   DISTRACTED: 'distracted',
@@ -63,7 +66,7 @@ const ctx      = canvasEl.getContext('2d');
 const calibCV  = document.getElementById('calib-canvas');
 const calibCtx = calibCV.getContext('2d');
 
-// ── 상태 ──────────────────────────────────────
+// ── 상태 변수 ─────────────────────────────────
 let micOn = true, camOn = true;
 let elapsed = 0, timerInterval;
 let checkedCount = 0;
@@ -75,13 +78,12 @@ let captionClearTimer = null;
 let sleepAlertInterval = null;
 let sleepAlertActive = false;
 
-// 감지 카운터
+// 감지 상태 및 카운터
+let currentState = STATES.FOCUSED;
 let eyeCount = 0, mouthCount = 0, headCount = 0, absenceCount = 0;
-
-// 누적 이벤트 (배터리 + 뱃지)
 let drowsyCnt = 0, yawnCnt = 0, headCnt2 = 0;
 let prevEyeAlert = false, prevYawnAlert = false, prevHeadAlert = false;
-let currentState = STATES.FOCUSED;
+
 let eyeClosedElapsed = 0;
 let eyeOpenElapsed = 0;
 let focusedElapsed = 0;
@@ -96,9 +98,14 @@ let headBase = { yaw: 0, pitch: 0, roll: 0 };
 let calibEndedAt = null;
 let lastDistractedAt = null;
 
+// 하품 누적
+let yawnFrameCount  = 0;
+let yawnCandidate   = false;
+
 // 캘리브레이션
 let calibEars = [], isCalib = true, EAR_THRESH = 0.20;
 let calibMars = [], MAR_DYNAMIC_THRESH = MAR_THRESH;
+let calibStartedAt = null;
 
 const IS_LOCAL_HOST = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const BACKEND_URL = IS_LOCAL_HOST
@@ -136,6 +143,7 @@ function connectCaptionViewer(roomCode = 'GLOBAL') {
   };
 }
 
+// ── TTS 졸음 알림 ─────────────────────────────
 function speakSleepAlert() {
   if (!('speechSynthesis' in window)) return;
   if (speechSynthesis.speaking) return;
@@ -165,7 +173,7 @@ function stopSleepAlert() {
   }
 }
 
-// ── 계산 함수 ─────────────────────────────────
+// ── 계산 함수 (Robust EAR, MAR, HeadPose) ─────
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function calcEAR(lm, idx) {
@@ -176,10 +184,6 @@ function calcMAR(lm, idx) {
   const tm = { x: (lm[idx[0]].x + lm[idx[1]].x) / 2, y: (lm[idx[0]].y + lm[idx[1]].y) / 2 };
   const bm = { x: (lm[idx[2]].x + lm[idx[3]].x) / 2, y: (lm[idx[2]].y + lm[idx[3]].y) / 2 };
   return dist(tm, bm) / dist(lm[idx[4]], lm[idx[5]]);
-}
-
-function calcTilt(lm) {
-  return Math.abs(Math.atan2(lm[454].y - lm[234].y, lm[454].x - lm[234].x) * 180 / Math.PI);
 }
 
 function calcHeadPoseProxy(lm) {
@@ -288,7 +292,6 @@ function drawCalibFrame(lm) {
   const mx1 = Math.min(...mxs) - 5, my1 = Math.min(...mys) - 5;
   const mbw = Math.max(...mxs) - Math.min(...mxs) + 10;
   const mbh = Math.max(...mys) - Math.min(...mys) + 10;
-  const marVal = calcMAR(lm, MOUTH);
   calibCtx.strokeStyle = '#f59e0b';
   calibCtx.lineWidth = 2.5;
   calibCtx.setLineDash([5, 3]);
@@ -316,7 +319,7 @@ function updateBadge(id, count, icon, label) {
 }
 
 // ── 배터리 업데이트 ───────────────────────────
-function updateBattery(eyeAlert, yawnAlert, headAlert, absent) {
+function updateBattery() {
   const fill = document.getElementById('battery-fill');
   const pct  = document.getElementById('battery-pct');
   if (!fill || !pct) return;
@@ -341,17 +344,48 @@ function updateBattery(eyeAlert, yawnAlert, headAlert, absent) {
                   : 'var(--text-secondary)';
 }
 
-// ── MediaPipe 결과 처리 ───────────────────────
+// ── 상태 업데이트 (공통) ──────────────────────
+function applyState(newState) {
+  if (currentState === newState) return;
+  const prev = currentState;
+  currentState = newState;
+  
+  setStatus(STATUS_UI[newState].text, STATUS_UI[newState].bg);
+  updateBattery();
+
+  // 타일 테두리
+  const wrap = document.getElementById('tile-me');
+  wrap?.classList.toggle('drowsy-alert', newState === STATES.DROWSY);
+
+  // TTS
+  if (newState === STATES.DROWSY) {
+    startSleepAlert();
+  } else if (prev === STATES.DROWSY && newState === STATES.FOCUSED) {
+    stopSleepAlert();
+  }
+
+  // warning 누적 (WARNING 진입 시)
+  if (newState === STATES.WARNING && prev !== STATES.WARNING) {
+    const nowSec = performance.now() / 1000;
+    warningTimes.push(nowSec);
+    warningTimes = warningTimes.filter(t => nowSec - t < WARNING_WINDOW_MIN * 60);
+    warningCount = warningTimes.length;
+  }
+}
+
+// ── MediaPipe 결과 처리 (핵심 탐지 알고리즘) ──
 function onResults(results) {
   syncCanvasSize();
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
+  // 1. 얼굴 없음 (자리이탈 판단 및 방어)
   if (!results.multiFaceLandmarks?.length) {
     const nowSec = performance.now() / 1000;
     if (!onResults._lastFrameTs) onResults._lastFrameTs = nowSec;
     onResults._lastFrameTs = nowSec;
     if (absentStartedAt === null) absentStartedAt = nowSec;
     const absentSec = nowSec - absentStartedAt;
+    
     if (++absenceCount >= ABSENCE_FRAMES) {
       const recentDistractedContext =
         lastDistractedAt !== null && (nowSec - lastDistractedAt) < DISTRACTED_RECOVER_SEC;
@@ -362,29 +396,31 @@ function onResults(results) {
         warningCount >= WARNING_MAX_COUNT;
 
       if (likelyDrowsy && absentSec >= FACE_MISSING_SLEEP_SEC) {
-        currentState = STATES.DROWSY;
+        applyState(STATES.DROWSY);
       } else if (absentSec >= ABSENT_SEC) {
-        currentState = STATES.ABSENT;
+        applyState(STATES.ABSENT);
       } else if (recentDistractedContext && absentSec < DISTRACTED_ABSENT_SEC) {
-        currentState = STATES.DISTRACTED;
+        applyState(STATES.DISTRACTED);
       }
-      setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
     }
     return;
   }
 
   absenceCount = 0;
   absentStartedAt = null;
-  const lm     = results.multiFaceLandmarks[0];
+  const lm = results.multiFaceLandmarks[0];
   const nowSec = performance.now() / 1000;
+  const elapsedSec = onResults._lastFrameTs ? Math.min(nowSec - onResults._lastFrameTs, 0.25) : 0.033;
+  onResults._lastFrameTs = nowSec;
+
   const lEAR   = calcEAR(lm, L_EYE);
   const rEAR   = calcEAR(lm, R_EYE);
   const avgEAR = (lEAR + rEAR) / 2;
   const marVal = calcMAR(lm, MOUTH);
-  const tilt   = calcTilt(lm);
   const { yaw, pitch, roll } = calcHeadPoseProxy(lm);
   const gaze = calcGazeProxy(lm);
 
+  // 2. 캘리브레이션
   if (isCalib) {
     calibEars.push(avgEAR);
     calibMars.push(marVal);
@@ -392,12 +428,13 @@ function onResults(results) {
       calibCV.width  = calibCV.offsetWidth;
       calibCV.height = calibCV.offsetHeight;
     }
-    const pct   = calibEars.length / CALIB_FRAMES;
+    const pct = calibEars.length / CALIB_FRAMES;
     const barEl = document.getElementById('calib-bar');
     const pctEl = document.getElementById('calib-percent');
-    if (barEl) barEl.style.width   = (pct * 100) + '%';
-    if (pctEl) pctEl.textContent   = Math.round(pct * 100) + '%';
+    if (barEl) barEl.style.width = (pct * 100) + '%';
+    if (pctEl) pctEl.textContent = Math.round(pct * 100) + '%';
     drawCalibFrame(lm);
+    
     if (calibEars.length >= CALIB_FRAMES) {
       EAR_THRESH = (calibEars.reduce((a, b) => a + b) / calibEars.length) * 0.75;
       if (calibMars.length > 0) {
@@ -410,12 +447,11 @@ function onResults(results) {
             yaw: acc.yaw + cur.yaw / headCalib.length,
             pitch: acc.pitch + cur.pitch / headCalib.length,
             roll: acc.roll + cur.roll / headCalib.length,
-          }),
-          { yaw: 0, pitch: 0, roll: 0 }
+          }), { yaw: 0, pitch: 0, roll: 0 }
         );
       }
-      isCalib    = false;
-      calibEndedAt = performance.now() / 1000;
+      isCalib = false;
+      calibEndedAt = nowSec;
       warningTimes = [];
       warningCount = 0;
       document.getElementById('calibration-overlay').style.display = 'none';
@@ -425,39 +461,14 @@ function onResults(results) {
     return;
   }
 
+  // 3. 실시간 판정 (타이머 누적)
   const yawAdj = yaw - headBase.yaw;
   const pitchAdj = pitch - headBase.pitch;
   const rollAdj = roll - headBase.roll;
   const startupGrace = calibEndedAt !== null && (nowSec - calibEndedAt) < STARTUP_GRACE_SEC;
   const moe = marVal / (avgEAR + 1e-6);
 
-  eyeCount   = avgEAR < EAR_THRESH  ? eyeCount + 1   : 0;
-  const yawnCandidate =
-    marVal > MAR_DYNAMIC_THRESH &&
-    Math.abs(yawAdj) <= 18 &&
-    Math.abs(rollAdj) <= 20;
-  mouthCount = yawnCandidate ? mouthCount + 1 : 0;
-  const lookingAwayNow = gaze > GAZE_THRESH;
-  const pitchDistractedNow =
-    Math.abs(pitchAdj) > PITCH_THRESH && lookingAwayNow;
-  const headDistractedNow =
-    !startupGrace && (
-      Math.abs(yawAdj) > YAW_THRESH ||
-      Math.abs(rollAdj) > ROLL_THRESH ||
-      pitchDistractedNow
-    );
-  const distractedNow = headDistractedNow || (Math.abs(yawAdj) > YAW_ASSIST && lookingAwayNow);
-  headCount  = distractedNow ? headCount + 1  : 0;
-
-  const eyeAlert  = eyeCount   >= EYE_FRAMES;
-  const yawnAlert = mouthCount >= MAR_FRAMES;
-  const headAlert = headCount  >= HEAD_FRAMES;
-  if (!onResults._lastFrameTs) onResults._lastFrameTs = nowSec;
-  const elapsedSec = Math.max(0, Math.min(nowSec - onResults._lastFrameTs, 0.25));
-  onResults._lastFrameTs = nowSec;
-
   const eyeClosedNow = avgEAR < EAR_THRESH;
-
   if (eyeClosedNow) {
     eyeClosedElapsed += elapsedSec;
     eyeOpenElapsed = 0;
@@ -466,26 +477,42 @@ function onResults(results) {
     eyeClosedElapsed = 0;
   }
 
-  if (eyeAlert || yawnAlert || distractedNow) focusedElapsed = 0;
+  const yawnCandidate = marVal > MAR_DYNAMIC_THRESH && Math.abs(yawAdj) <= 18 && Math.abs(rollAdj) <= 20;
+  mouthCount = yawnCandidate ? mouthCount + 1 : 0;
+  const yawnAlert = mouthCount >= MAR_FRAMES;
+
+  const lookingAwayNow = gaze > GAZE_THRESH;
+  const pitchDistractedNow = Math.abs(pitchAdj) > PITCH_THRESH && lookingAwayNow;
+  const headDistractedNow = !startupGrace && (
+      Math.abs(yawAdj) > YAW_THRESH ||
+      Math.abs(rollAdj) > ROLL_THRESH ||
+      pitchDistractedNow
+  );
+  
+  const distractedNow = headDistractedNow || (Math.abs(yawAdj) > YAW_ASSIST && lookingAwayNow);
+  
+  if (eyeClosedNow || yawnAlert || distractedNow) focusedElapsed = 0;
   else focusedElapsed += elapsedSec;
+  
   distractedElapsed = distractedNow ? distractedElapsed + elapsedSec : 0;
   if (distractedNow) lastDistractedAt = nowSec;
+  
   moeElapsed = (moe > MOE_THRESH && marVal > MAR_DYNAMIC_THRESH && !eyeClosedNow) ? moeElapsed + elapsedSec : 0;
   const moeAlert = moeElapsed >= MOE_SEC;
 
+  // PERCLOS 및 Warning
   perclosSamples.push({ t: nowSec, closed: eyeClosedNow });
   perclosSamples = perclosSamples.filter(sample => nowSec - sample.t <= PERCLOS_WINDOW_SEC);
-  const perclosClosed = perclosSamples.reduce((sum, sample) => sum + (sample.closed ? 1 : 0), 0);
-  const perclos = perclosSamples.length > 0 ? perclosClosed / perclosSamples.length : 0;
   warningTimes = warningTimes.filter(t => nowSec - t <= WARNING_WINDOW_MIN * 60);
   warningCount = warningTimes.length;
   const repeatedWarningRisk = warningCount >= WARNING_MAX_COUNT;
 
-  if (eyeAlert  && !prevEyeAlert)  { drowsyCnt++; updateBadge('eye',  drowsyCnt, '👁',  '졸음'); }
-  if (yawnAlert && !prevYawnAlert) { yawnCnt++;   updateBadge('yawn', yawnCnt,   '👄',  '하품'); }
-  if (headAlert && !prevHeadAlert) { headCnt2++;  updateBadge('head', headCnt2,  '🙆', '고개떨굼'); }
-  prevEyeAlert = eyeAlert; prevYawnAlert = yawnAlert; prevHeadAlert = headAlert;
-
+  if (eyeClosedNow && !prevEyeAlert) { drowsyCnt++; updateBadge('eye', drowsyCnt, '👁', '눈감음'); prevEyeAlert = true; }
+  else if (!eyeClosedNow) { prevEyeAlert = false; }
+  if (yawnAlert && !prevYawnAlert) { yawnCnt++; updateBadge('yawn', yawnCnt, '👄', '하품'); prevYawnAlert = true; }
+  else if (!yawnAlert) { prevYawnAlert = false; }
+  
+  // 4. 상태 머신
   let nextState = STATES.FOCUSED;
   if (eyeClosedElapsed >= DROWSY_SEC || (repeatedWarningRisk && eyeClosedElapsed >= WARNING_SEC)) {
     nextState = STATES.DROWSY;
@@ -493,37 +520,22 @@ function onResults(results) {
     nextState = STATES.DROWSY;
   } else if (currentState === STATES.DROWSY && eyeOpenElapsed >= RECOVER_FOCUSED_SEC) {
     nextState = STATES.FOCUSED;
-  } else if (eyeClosedElapsed >= WARNING_SEC || yawnAlert || moeAlert) {
+  } else if (eyeClosedElapsed >= WARNING_SEC || (yawnAlert && moeAlert)) {
     nextState = STATES.WARNING;
-  } else if (headAlert || distractedElapsed >= DISTRACTED_SEC) {
+  } else if (distractedElapsed >= DISTRACTED_SEC) {
     nextState = STATES.DISTRACTED;
   } else if (currentState === STATES.DISTRACTED && focusedElapsed < DISTRACTED_RECOVER_SEC) {
     nextState = STATES.DISTRACTED;
   }
 
-  if (nextState === STATES.WARNING && currentState !== STATES.WARNING) {
-    warningTimes.push(nowSec);
-  }
   if (nextState === STATES.FOCUSED && eyeOpenElapsed >= RECOVER_FOCUSED_SEC) {
     warningTimes = [];
     warningCount = 0;
   }
 
-  currentState = nextState;
+  applyState(nextState);
 
-  const wrap = document.getElementById('tile-me');
-  setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
-  if (currentState === STATES.DROWSY) wrap?.classList.add('drowsy-alert');
-  else wrap?.classList.remove('drowsy-alert');
-
-  if (currentState === STATES.DROWSY) {
-    startSleepAlert();
-  } else if (currentState === STATES.FOCUSED) {
-    stopSleepAlert();
-  }
-
-  updateBattery(eyeAlert, yawnAlert, headAlert, false);
-
+  // 시각화
   if (!onResults._t || Date.now() - onResults._t > 1000) {
     sendDetectionData(currentState, avgEAR, marVal, drowsyCnt, yawnCnt, headCnt2);
     onResults._t = Date.now();
@@ -672,11 +684,12 @@ function confirmOnboarding() {
     }).catch(() => {});
 
   const roomCode = sessionStorage.getItem('roomCode') || 'GLOBAL';
-  connectCaptionViewer(roomCode);  
+  connectCaptionViewer(roomCode);
   joinDailyRoom(userName, userRole);
   startCamera();
   startTimer();
 }
+
 // ── Daily.co ─────────────────────────────────
 async function joinDailyRoom(userName, role) {
   try {
@@ -687,7 +700,6 @@ async function joinDailyRoom(userName, role) {
     if (!res.ok) throw new Error('토큰 발급 실패');
     const { token, room_url } = await res.json();
 
-    // [수정] audioSource: false (마이크 끔), setLocalVideo로 카메라 명시 활성화
     dailyCall = DailyIframe.createCallObject({ audioSource: false, videoSource: true });
     await dailyCall.join({ url: room_url, token });
     try { await dailyCall.setLocalVideo(true); } catch {}
@@ -698,7 +710,6 @@ async function joinDailyRoom(userName, role) {
       .on('participant-left',    e => removePeerTile(e.participant.session_id))
       .on('track-started',       onTrackStarted);
 
-    // [수정] 이미 방에 있는 참여자 처리 (강사가 먼저 입장한 경우)
     const existing = dailyCall.participants();
     Object.values(existing).forEach(p => {
       if (p.local) return;
@@ -720,35 +731,25 @@ async function joinDailyRoom(userName, role) {
         }
       }
     });
-
     console.log('Daily.co 입장 완료');
-  } catch (e) {
-    console.warn('Daily.co 연결 실패:', e.message);
-  }
+  } catch (e) { console.warn('Daily.co 연결 실패:', e.message); }
 }
 
-// 참여자 입장 시 — 강사 영상 또는 peer 타일 처리
 function onParticipantJoined(e) {
   if (e.participant.local) return;
   const { session_id: sid, user_name: name = '참여자', owner } = e.participant;
-  if (owner) {
-    attachInstructorVideo(e.participant);
-  } else {
-    addPeerTile(sid, name);
-  }
+  if (owner) attachInstructorVideo(e.participant);
+  else addPeerTile(sid, name);
 }
 
-// 참여자 업데이트 시 — 트랙 변경 반영
 function onParticipantUpdated(e) {
   if (e.participant.local) return;
-  const { owner } = e.participant;
-  if (owner) attachInstructorVideo(e.participant);
+  if (e.participant.owner) attachInstructorVideo(e.participant);
 }
 
 function onTrackStarted(e) {
   if (e.participant.local) return;
   if (e.track.kind !== 'video') return;
-
   const sid = e.participant.session_id;
 
   if (e.participant.owner) {
@@ -758,10 +759,8 @@ function onTrackStarted(e) {
       instVideo.srcObject = new MediaStream([e.track]);
       instVideo.style.display = 'block';
       if (instFallback) instFallback.style.display = 'none';
-      console.log('강사 영상 연결됨');
     }
   } else {
-    // 다른 학생 웹캠 — peer 타일에 연결
     const peerVideo    = document.getElementById('peer-video-' + sid);
     const peerFallback = document.getElementById('peer-fallback-' + sid);
     if (peerVideo) {
@@ -784,13 +783,11 @@ function attachInstructorVideo(participant) {
   }
 }
 
-// [수정] peer 타일 — 고정 슬롯 방식 (슬롯 0,1 먼저 채우고 초과 시 동적 추가)
+// peer 타일 — 고정 슬롯 방식
 const peerSlotMap = {};
 
 function addPeerTile(sid, name) {
   if (peerSlotMap[sid]) return;
-
-  // 고정 슬롯(0,1) 빈 곳 먼저 채우기
   for (let i = 0; i < 2; i++) {
     const slot = document.getElementById('peer-slot-' + i);
     if (slot && !slot.dataset.sid) {
@@ -809,7 +806,6 @@ function addPeerTile(sid, name) {
         fallback.innerHTML = `<div class="peer-avatar">${name.charAt(0)}</div>`;
         fallback.id = 'peer-fallback-' + sid;
       }
-
       const label = document.getElementById('peer-slot-' + i + '-label');
       if (label) { label.textContent = name; label.style.display = ''; }
 
@@ -820,7 +816,6 @@ function addPeerTile(sid, name) {
     }
   }
 
-  // 슬롯 꽉 찼으면 동적 추가
   const container = document.getElementById('peer-container');
   if (!container || document.getElementById('peer-tile-' + sid)) return;
   const tile = document.createElement('div');
@@ -841,7 +836,6 @@ function addPeerTile(sid, name) {
 function removePeerTile(sid) {
   const slotId = peerSlotMap[sid];
   if (!slotId) return;
-
   if (slotId.startsWith('peer-slot-')) {
     const slot = document.getElementById(slotId);
     if (slot) {
@@ -871,7 +865,6 @@ function connectWebSocket(studentId) {
     ws.onclose = () => setTimeout(() => connectWebSocket(studentId), 3000);
     ws.onerror = e => console.warn('WS 오류:', e);
 
-    // 강사 수업 종료 신호 수신 → 자동 퇴장
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
@@ -884,11 +877,17 @@ function connectWebSocket(studentId) {
             goTo('login');
           }, 2000);
         }
+        if (msg.type === 'stretch_start') startStretchMode();
+        if (msg.type === 'chat') {
+          appendChatMessage(msg);
+          if (document.getElementById('chat-panel').style.display === 'none') showChatBadge();
+        }
+        if (msg.type === 'hand_raise') appendHandRaise(msg.sender);
+        if (msg.type === 'break_start') startBreakMode(msg.duration || 300);
+        if (msg.type === 'break_end') endBreakMode();
       } catch {}
     };
-  } catch (e) {
-    console.warn('WebSocket 연결 실패:', e.message);
-  }
+  } catch (e) { console.warn('WebSocket 연결 실패:', e.message); }
 }
 
 function sendDetectionData(status, ear, mar, dc, yc, hc) {
@@ -901,6 +900,85 @@ function sendDetectionData(status, ear, mar, dc, yc, hc) {
     warning_count: warningCount,
     timestamp: Date.now()
   }));
+}
+
+// ── 스트레칭 모드 ─────────────────────────────
+function startStretchMode() {
+  cameraInstance?.stop();
+  const overlay = document.createElement('div');
+  overlay.id = 'stretch-overlay';
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.85);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: white; font-family: sans-serif;
+  `;
+  overlay.innerHTML = `
+    <div style="font-size:3rem; margin-bottom:1rem;">🧘</div>
+    <div style="font-size:1.8rem; font-weight:bold; margin-bottom:0.5rem;">잠깐 스트레칭을 해봅시다!</div>
+    <div style="font-size:1rem; color:#aaa; margin-bottom:2rem;">목, 어깨를 가볍게 풀어주세요</div>
+    <div id="stretch-timer" style="font-size:4rem; font-weight:bold; color:#f97316;">5</div>
+  `;
+  document.body.appendChild(overlay);
+
+  let count = 5;
+  const interval = setInterval(() => {
+    count--;
+    const timerEl = document.getElementById('stretch-timer');
+    if (timerEl) timerEl.textContent = count;
+    if (count <= 0) {
+      clearInterval(interval);
+      overlay.remove();
+      cameraInstance?.start();
+    }
+  }, 1000);
+}
+
+// ── 쉬는시간 모드 ─────────────────────────────
+function startBreakMode(totalSeconds) {
+  cameraInstance?.stop();
+  stopSleepAlert();
+
+  const utter = new SpeechSynthesisUtterance('쉬는시간입니다. 잠시 휴식을 취하세요.');
+  utter.lang = 'ko-KR';
+  speechSynthesis.speak(utter);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'break-overlay';
+  overlay.style.cssText = `
+    position:fixed; inset:0; z-index:9999;
+    background:rgba(0,0,0,0.88);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    color:white; font-family:sans-serif;`;
+  overlay.innerHTML = `
+    <div style="font-size:3rem;margin-bottom:1rem;">☕</div>
+    <div style="font-size:1.8rem;font-weight:bold;margin-bottom:0.5rem;">쉬는시간입니다!</div>
+    <div style="font-size:1rem;color:#aaa;margin-bottom:2rem;">잠시 휴식을 취하세요 😊</div>
+    <div id="break-student-timer" style="font-size:4rem;font-weight:bold;color:#f97316;font-family:monospace;">
+      ${String(Math.floor(totalSeconds/60)).padStart(2,'0')}:${String(totalSeconds%60).padStart(2,'0')}
+    </div>`;
+  document.body.appendChild(overlay);
+
+  let remaining = totalSeconds;
+  window._breakInterval = setInterval(() => {
+    remaining--;
+    const el = document.getElementById('break-student-timer');
+    if (el) el.textContent =
+      `${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
+    if (remaining <= 0) endBreakMode();
+  }, 1000);
+}
+
+function endBreakMode() {
+  clearInterval(window._breakInterval);
+  document.getElementById('break-overlay')?.remove();
+  cameraInstance?.start();
+
+  const utter = new SpeechSynthesisUtterance('쉬는시간이 끝났습니다. 자리에 돌아와주세요.');
+  utter.lang = 'ko-KR';
+  speechSynthesis.speak(utter);
 }
 
 // ── 타일 스왑 ─────────────────────────────────
@@ -946,4 +1024,78 @@ window.addEventListener('beforeunload', () => {
   if (captionViewerWs) captionViewerWs.close();
   clearInterval(timerInterval);
 });
+
+// ── 채팅 ─────────────────────────────────────
+function toggleChat() {
+  const panel = document.getElementById('chat-panel');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'flex';
+  if (!isOpen) hideChatBadge();
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text  = input.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const name = sessionStorage.getItem('userName') || '나';
+  ws.send(JSON.stringify({
+    type: 'chat', sender: name, text,
+    timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  }));
+  input.value = '';
+}
+
+function appendChatMessage(msg) {
+  const myName  = sessionStorage.getItem('userName') || '나';
+  const isInst  = msg.role === 'instructor';
+  const isMine  = msg.sender === myName && !isInst;
+  const cls     = isInst ? 'instructor' : 'mine'; 
+  const senderLabel = isMine ? '' : `<div class="chat-msg-sender">${isInst ? '🎓 ' : ''}${msg.sender}</div>`;
+
+  const div = document.createElement('div');
+  div.className = `chat-msg ${cls}`;
+  div.innerHTML = `${senderLabel}<div>${msg.text}</div><div style="font-size:9px;opacity:0.4;margin-top:3px;">${msg.timestamp || ''}</div>`;
+
+  const messages = document.getElementById('chat-messages');
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function appendHandRaise(sender) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg system';
+  div.textContent = `🙋 ${sender} 학생이 손을 들었습니다`;
+  const messages = document.getElementById('chat-messages');
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+  if (document.getElementById('chat-panel').style.display === 'none') {
+    showChatBadge();
+  }
+}
+
+function showChatBadge() {
+  const btn = document.getElementById('chat-btn');
+  if (!btn.querySelector('.chat-badge')) {
+    const badge = document.createElement('div');
+    badge.className = 'chat-badge';
+    btn.appendChild(badge);
+  }
+}
+
+function hideChatBadge() {
+  document.getElementById('chat-btn')?.querySelector('.chat-badge')?.remove();
+}
+
+// ── 손들기 ────────────────────────────────────
+function raiseHand() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const name = sessionStorage.getItem('userName') || '나';
+  ws.send(JSON.stringify({ type: 'hand_raise', sender: name }));
+  showToast('🙋 손들기 전송!');
+
+  const btn = document.getElementById('hand-btn');
+  btn.classList.add('active');
+  setTimeout(() => btn.classList.remove('active'), 3000);
+}
+
 window.addEventListener('resize', syncCanvasSize);

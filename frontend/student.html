@@ -205,11 +205,11 @@
       <span class="icon">📹</span>
       <span class="label">카메라</span>
     </button>
-    <button class="ctrl-btn">
+    <button class="ctrl-btn" id="chat-btn" onclick="toggleChat()">
       <span class="icon">💬</span>
       <span class="label">채팅</span>
     </button>
-    <button class="ctrl-btn">
+    <button class="ctrl-btn" id="hand-btn" onclick="raiseHand()">
       <span class="icon">🙋</span>
       <span class="label">손들기</span>
     </button>
@@ -223,6 +223,19 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
   <script src="js/common.js"></script>
   <script src="js/student.js"></script>
-  
+
+  <!-- 채팅 패널 -->
+  <div id="chat-panel" style="display:none;">
+    <div class="chat-header">
+      <span>💬 채팅</span>
+      <button onclick="toggleChat()">✕</button>
+    </div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="chat-input-row">
+      <input id="chat-input" type="text" placeholder="메시지 입력..." onkeydown="if(event.key==='Enter') sendChat()">
+      <button onclick="sendChat()">전송</button>
+    </div>
+  </div>
+    
 </body>
 </html>

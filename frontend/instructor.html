@@ -6,6 +6,58 @@
   <title>Sleep2Wake · 강사</title>
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/instructor.css">
+  <style>
+    /* ── 상태 카운트 그리드 ── */
+    .status-count-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .status-count-item {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px; padding: 6px 4px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .status-count-val   { font-size: 1.1rem; font-weight: 700; }
+    .status-count-label { font-size: 9px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── 학생 목록 패널 ── */
+    #student-list-panel { max-height: 160px; overflow-y: auto; margin-top: 6px; }
+    #student-list-panel::-webkit-scrollbar       { width: 4px; }
+    #student-list-panel::-webkit-scrollbar-track { background: transparent; }
+    #student-list-panel::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+    /* ── 학생 타일 상태 뱃지 ── */
+    .tile-status-badge {
+      position: absolute; top: 6px; left: 6px;
+      font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px;
+      color: #fff; z-index: 10; pointer-events: none;
+    }
+
+    /* ── 헤더 액션 버튼 ── */
+    .header-action-btn {
+      padding: 6px 14px; border-radius: 8px; border: none;
+      font-size: 12px; font-weight: 700;
+      cursor: pointer; transition: opacity 0.2s; white-space: nowrap;
+    }
+    .header-action-btn:hover { opacity: 0.85; }
+    .btn-header-stretch { background: linear-gradient(135deg, #f97316, #ef4444); color: #fff; }
+    .btn-header-break   { background: linear-gradient(135deg, #3b82f6, #6366f1); color: #fff; }
+
+    /* ── 쉬는시간 메인뷰 오버레이 ── */
+    #break-main-overlay {
+      position: absolute; inset: 0; z-index: 50;
+      background: rgba(0,0,0,0.82);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      border-radius: inherit;
+    }
+  </style>
 </head>
 <body>
 
@@ -18,91 +70,130 @@
         <div class="live-dot"></div>
         <span class="live-text">LIVE</span>
       </div>
-      <img src="assets/images/likelion-logo.png" alt="멋사" class="inst-logo"
-           onerror="this.style.display='none'">
+      <img src="assets/images/likelion-logo.png" alt="멋사" class="inst-logo" onerror="this.style.display='none'">
       <span class="inst-brand">Sleep2Wake</span>
       <span class="inst-class" id="inst-class-label">멋쟁이사자처럼 AI 과정</span>
-    </div>
-    <div class="inst-header-right">
 
-      <!-- 과정 코드 생성 / 표시 -->
+    </div>
+
+    <div class="inst-header-right">
       <div class="room-code-area" id="room-code-area">
         <div class="room-code-display" id="room-code-display" style="display:none">
           <span class="rcd-label">과정 코드</span>
           <span class="rcd-code" id="rcd-code-text">-</span>
           <button class="rcd-copy-btn" onclick="copyRoomCode()">📋 복사</button>
         </div>
-        <button class="create-room-btn" id="create-room-btn" onclick="createRoom()">
-          + 과정 코드 생성
-        </button>
+        <button class="create-room-btn" id="create-room-btn" onclick="createRoom()">+ 과정 코드 생성</button>
       </div>
+      <button class="header-action-btn btn-header-stretch" onclick="acceptStretch()">🧘 스트레칭</button>
+      <button class="header-action-btn btn-header-break"   onclick="showBreakPopup()">☕ 쉬는시간</button>
 
-      <!-- 반 평균 집중도 -->
       <div class="class-focus-wrap">
         <span class="class-focus-label">반 평균</span>
         <div class="class-focus-bar">
-          <div class="class-focus-fill" id="class-focus-fill" style="width:0%"></div>
+          <div class="class-focus-fill" id="class-focus-fill-header" style="width:0%"></div>
         </div>
-        <span class="class-focus-pct" id="class-focus-pct">0%</span>
+        <span class="class-focus-pct" id="class-focus-pct-header">0%</span>
       </div>
-
-      <!-- 스트레칭 제안 (집중도 낮을 때만 노출) -->
-      <button class="stretch-btn" id="stretch-btn" onclick="suggestStretch()" style="display:none">
-        🧘 스트레칭 제안
-      </button>
-
       <span class="inst-timer" id="inst-timer">🕐 00:00</span>
-      <button class="inst-leave-btn" onclick="leaveRoom()">수업 종료</button>
     </div>
   </div>
 
   <!-- 메인 레이아웃 -->
   <div class="inst-body">
 
-    <!-- 왼쪽: 강사 카메라 or 화면 공유 -->
-    <div class="inst-main-view">
-      <!-- 카메라 영상 -->
-      <video id="inst-video" autoplay muted playsinline></video>
-      <!-- 화면 공유 영상 (화면 공유 중일 때 표시) -->
-      <video id="screen-video" autoplay playsinline style="display:none; width:100%; height:100%; object-fit:contain;"></video>
-      <div id="inst-live-caption" class="live-caption" aria-live="polite"></div>
-      <div class="inst-cam-off" id="inst-cam-off" style="display:none">
-        <div class="inst-avatar" id="inst-avatar-text">강</div>
-        <div class="inst-cam-label">카메라 꺼짐</div>
+    <!-- 왼쪽: 강사 영상 + 하단 학생 가로줄 -->
+    <div class="inst-left">
+      <div class="inst-main-view" id="inst-main-view">
+        <video id="inst-video" autoplay muted playsinline></video>
+        <video id="screen-video" autoplay playsinline style="display:none; width:100%; height:100%; object-fit:contain;"></video>
+        <div id="inst-live-caption" class="live-caption" aria-live="polite"></div>
+        <div class="inst-cam-off" id="inst-cam-off" style="display:none">
+          <div class="inst-avatar" id="inst-avatar-text">강</div>
+          <div class="inst-cam-label">카메라 꺼짐</div>
+        </div>
+        <div class="inst-label" id="inst-main-label">🎓 강사 (나)</div>
+        <div class="live-badge-corner">● LIVE</div>
+        <div class="screen-share-badge" id="screen-share-badge" style="display:none">🖥️ 화면 공유 중</div>
       </div>
-      <div class="inst-label" id="inst-main-label">🎓 강사 (나)</div>
-      <div class="live-badge-corner">● LIVE</div>
-      <!-- 화면 공유 중 배지 -->
-      <div class="screen-share-badge" id="screen-share-badge" style="display:none">🖥️ 화면 공유 중</div>
+
+      <!-- 하단 학생 가로줄 -->
+      <div class="inst-student-strip">
+        <div class="rotation-control">
+          <span class="rotation-label">자동 로테이션</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="rotation-toggle" checked onchange="toggleRotation(this.checked)">
+            <span class="toggle-track"></span>
+          </label>
+          <span class="rotation-page" id="rotation-page">1 / 1</span>
+        </div>
+        <div class="inst-student-grid" id="inst-student-grid"></div>
+      </div>
     </div>
 
-    <!-- 우측: 학생 로테이션 패널 -->
+    <!-- 오른쪽 패널 -->
     <div class="inst-right">
 
-      <div class="inst-stats">
-        <div class="inst-stat-item">
-          <div class="inst-stat-val" id="inst-total">0</div>
-          <div class="inst-stat-label">접속 학생</div>
+      <!-- 모니터링 — 5단계 카운트 -->
+      <div class="panel-section">
+        <div class="panel-section-title">📊 모니터링</div>
+        <div class="status-count-grid">
+          <div class="status-count-item">
+            <div class="status-count-val" id="cnt-focused" style="color:#22c55e">0</div>
+            <div class="status-count-label">집중</div>
+          </div>
+          <div class="status-count-item">
+            <div class="status-count-val" id="cnt-distracted" style="color:#eab308">0</div>
+            <div class="status-count-label">주의산만</div>
+          </div>
+          <div class="status-count-item">
+            <div class="status-count-val" id="cnt-warning" style="color:#f97316">0</div>
+            <div class="status-count-label">졸음의심</div>
+          </div>
+          <div class="status-count-item">
+            <div class="status-count-val" id="cnt-drowsy" style="color:#ef4444">0</div>
+            <div class="status-count-label">졸음확정</div>
+          </div>
+          <div class="status-count-item">
+            <div class="status-count-val" id="cnt-absent" style="color:#64748b">0</div>
+            <div class="status-count-label">자리이탈</div>
+          </div>
+          <div class="status-count-item">
+            <div class="status-count-val" id="inst-total" style="color:#fff">0</div>
+            <div class="status-count-label">총 접속</div>
+          </div>
         </div>
-        <div class="inst-stat-item">
-          <div class="inst-stat-val" id="inst-focus" style="color:var(--accent-green)">0</div>
-          <div class="inst-stat-label">집중 중</div>
-        </div>
-        <div class="inst-stat-item">
-          <div class="inst-stat-val" id="inst-alert" style="color:var(--accent-red)">0</div>
-          <div class="inst-stat-label">경고</div>
+
+        <!-- 반 평균 집중도 -->
+        <div style="margin-top:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span style="font-size:11px; color:var(--text-muted);">반 평균 집중도</span>
+            <span id="class-focus-pct" style="font-size:12px; font-weight:700; color:var(--accent-green);">0%</span>
+          </div>
+          <div class="class-focus-bar" style="height:6px;">
+            <div class="class-focus-fill" id="class-focus-fill" style="width:0%"></div>
+          </div>
         </div>
       </div>
 
-      <div class="inst-student-grid" id="inst-student-grid"></div>
+      <!-- 학생 목록 -->
+      <div class="panel-section">
+        <div class="panel-section-title">👥 학생 목록</div>
+        <div id="student-list-panel">
+          <div style="color:var(--text-muted);font-size:12px;text-align:center;padding:12px;">
+            접속 학생 없음
+          </div>
+        </div>
+      </div>
 
-      <div class="rotation-control">
-        <span class="rotation-label">자동 로테이션</span>
-        <label class="toggle-switch">
-          <input type="checkbox" id="rotation-toggle" checked onchange="toggleRotation(this.checked)">
-          <span class="toggle-track"></span>
-        </label>
-        <span class="rotation-page" id="rotation-page">1 / 1</span>
+      <!-- 인터랙션 피드 -->
+      <div class="panel-section panel-feed" style="display:flex; flex-direction:column; min-height:0;">
+        <div class="panel-section-title">💬 채팅 / 인터랙션</div>
+        <div class="chat-messages" id="inst-chat-messages" style="flex:1; overflow-y:auto; padding:6px 0; gap:6px; display:flex; flex-direction:column;"></div>
+        <div class="chat-input-row" style="padding:8px 0 0;">
+          <input id="inst-chat-input" type="text" placeholder="강사 메시지 입력..." onkeydown="if(event.key==='Enter') sendInstructorChat()">
+          <button onclick="sendInstructorChat()">전송</button>
+        </div>
       </div>
 
     </div>
@@ -118,20 +209,14 @@
       <span class="icon">📹</span>
       <span class="label">카메라</span>
     </button>
-    <!-- 강사 전용 화면 공유 버튼 -->
     <button class="ctrl-btn" id="screen-share-btn" onclick="toggleScreenShare()">
       <span class="icon">🖥️</span>
       <span class="label">화면 공유</span>
-    </button>
-    <button class="ctrl-btn" onclick="goReport()">
-      <span class="icon">📊</span>
-      <span class="label">리포트</span>
     </button>
     <div class="divider"></div>
     <button class="leave-btn" onclick="leaveRoom()">수업 종료</button>
   </div>
 
-  <!-- Daily.co SDK -->
   <script src="https://unpkg.com/@daily-co/daily-js"></script>
   <script src="js/common.js"></script>
   <script src="js/instructor.js"></script>
