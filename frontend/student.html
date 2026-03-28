@@ -74,7 +74,7 @@
           <input type="checkbox" class="ob-checkbox" onchange="handleCheck(this, 4)">
           <div class="ob-check-content">
             <div class="ob-check-title">📐 입장 직후 캘리브레이션이 진행됩니다</div>
-            <div class="ob-check-desc">약 3초간 정면을 바라봐주세요. 개인별 눈, 입 크기 기준값을 자동으로 측정합니다</div>
+            <div class="ob-check-desc">약 10초간 정면을 바라봐주세요. 개인별 눈, 입 크기 기준값을 자동으로 측정합니다</div>
           </div>
         </label>
 
@@ -105,7 +105,7 @@
         <span class="calib-logo-text">Sleep2Wake</span>
       </div>
       <div class="calib-title">👁 집중도 보정 중</div>
-      <div class="calib-sub">정면을 바라봐주세요 — 개인별 눈과 입 크기 기준값을 측정합니다</div>
+      <div class="calib-sub">화면을 바라봐주세요 — 개인별 눈과 입 크기 기준값을 측정합니다</div>
       <div class="calib-preview-wrap">
         <video id="calib-video" autoplay muted playsinline></video>
         <canvas id="calib-canvas"></canvas>
@@ -130,12 +130,23 @@
       </div>
       <span class="topbar-class">멋쟁이사자처럼 AI 과정</span>
     </div>
+    <div class="topbar-right">
       <div class="battery-wrap">
         <span class="battery-label">집중도</span>
         <div class="battery-icon">
           <div class="battery-fill" id="battery-fill"></div>
         </div>
         <span class="battery-pct" id="battery-pct">100%</span>
+      </div>
+      <div class="signal-timers">
+        <div class="signal-timer" id="eye-closed-timer">
+          <span class="signal-timer-label">눈 감김</span>
+          <span class="signal-timer-value" id="eye-closed-time">00:00</span>
+        </div>
+        <div class="signal-timer" id="absent-timer">
+          <span class="signal-timer-label">자리 이탈</span>
+          <span class="signal-timer-value" id="absent-time">00:00</span>
+        </div>
       </div>
       <span class="timer" id="timer">🕐 00:00</span>
     </div>

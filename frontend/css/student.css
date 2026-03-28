@@ -195,6 +195,38 @@ body {
 .battery-fill.alert { background: var(--accent-red); width: 20%; animation: pulse 1.5s infinite; }
 .battery-pct { font-size: 11px; font-weight: 600; color: var(--text-secondary); min-width: 30px; }
 
+.signal-timers { display: flex; align-items: center; gap: 8px; }
+.signal-timer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle);
+  min-width: 94px;
+}
+.signal-timer-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.signal-timer-value {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+.signal-timer.active {
+  background: rgba(255,123,0,0.08);
+  border-color: rgba(255,123,0,0.22);
+  box-shadow: inset 0 0 0 1px rgba(255,123,0,0.08);
+}
+.signal-timer.active .signal-timer-value {
+  color: #ffd08a;
+}
+
 .timer { font-size: 11px; color: var(--text-secondary); padding: 3px 8px; background: rgba(255,255,255,0.04); border-radius: 5px; border: 1px solid var(--border-subtle); }
 
 /* ══ 메인 레이아웃 ══ */
