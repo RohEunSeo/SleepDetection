@@ -4,145 +4,348 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sleep2Wake · 관리자</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/admin.css">
 </head>
 <body>
 
-  <div id="alert-toast" class="alert-toast"></div>
+<div id="alert-toast" class="alert-toast"></div>
 
-  <div class="admin-layout">
-
-    <!-- ══ 왼쪽 사이드바 ══ -->
-    <div class="sidebar">
-
-      <div class="sidebar-brand">
-        <img src="assets/images/likelion-logo.png" alt="멋사" class="sidebar-logo"
-             onerror="this.style.display='none'">
-        <div>
-          <div class="sidebar-brand-name">Sleep2Wake</div>
-          <div class="sidebar-brand-sub">관리자 모드</div>
-        </div>
-      </div>
-
-      <div class="sidebar-divider"></div>
-
-      <nav class="sidebar-nav">
-        <button class="nav-item active" onclick="switchTab('overview', this)">
-          <span class="nav-icon">🏠</span>
-          <span class="nav-label">전체 현황</span>
-        </button>
-        <button class="nav-item" onclick="switchTab('monitor', this)">
-          <span class="nav-icon">👁</span>
-          <span class="nav-label">수업 모니터링</span>
-        </button>
-        <button class="nav-item" onclick="switchTab('report', this)">
-          <span class="nav-icon">📋</span>
-          <span class="nav-label">리포트</span>
-        </button>
-      </nav>
-
-      <div class="sidebar-divider"></div>
-
-      <!-- 선택된 수업 표시 -->
-      <div class="sidebar-current-room" id="sidebar-current-room" style="display:none">
-        <div class="scr-label">현재 선택된 수업</div>
-        <div class="scr-code" id="scr-code-text">-</div>
-        <div class="scr-name" id="scr-name-text">-</div>
-      </div>
-
-      <!-- 경고 학생 -->
-      <div class="sb-section-label">⚠️ 경고 학생</div>
-      <div class="sb-alert-list" id="sb-alert-list">
-        <div class="sb-no-alert">경고 없음 ✓</div>
-      </div>
-
-      <div class="sidebar-footer">
-        <button class="sidebar-logout" onclick="doLogout()">← 나가기</button>
-      </div>
-
+<!-- ══ PDF 미리보기 모달 ══ -->
+<div id="pdf-preview-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#1f2937;border-radius:16px;width:100%;max-width:660px;max-height:96vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid #374151;flex-shrink:0;">
+      <button id="btn-pdf-prev" style="padding:6px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">◀ 이전</button>
+      <span id="pdf-page-indicator" style="flex:1;text-align:center;color:#fff;font-weight:700;font-size:14px;">1 / 2</span>
+      <button id="btn-pdf-next" style="padding:6px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">다음 ▶</button>
+      <button id="btn-pdf-save" style="padding:6px 16px;background:#FF7710;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">💾 PDF 저장</button>
+      <button id="btn-pdf-close" style="width:30px;height:30px;background:rgba(255,255,255,0.1);border:none;border-radius:8px;color:#fff;font-size:15px;cursor:pointer;">✕</button>
     </div>
-
-    <!-- ══ 메인 영역 ══ -->
-    <div class="admin-content">
-
-      <!-- 수업 선택 탭 바 (전체 공통) -->
-      <div class="room-tab-bar" id="room-tab-bar">
-        <div class="room-tab-label">수업 선택</div>
-        <div class="room-tabs" id="room-tabs"></div>
-        <div class="room-tab-live">
-          <div class="rtl-dot"></div>
-          <span id="rtl-text">실시간 모니터링 중</span>
+    <div style="flex:1;overflow-y:auto;padding:16px;display:flex;justify-content:center;">
+      <div id="pdf-page-1" style="width:100%;max-width:595px;">
+        <div style="background:#fff;border-radius:8px;padding:32px;box-shadow:0 4px 20px rgba(0,0,0,0.2);min-height:842px;font-family:'Pretendard',sans-serif;">
+          <div id="pdf-content-1"></div>
         </div>
       </div>
-
-      <!-- ── 전체 현황 탭 ── -->
-      <div class="tab-panel" id="tab-overview">
-        <div class="panel-title">전체 수업 현황</div>
-        <div class="overview-summary" id="overview-summary"></div>
-        <div class="room-cards" id="room-cards"></div>
-      </div>
-
-      <!-- ── 수업 모니터링 탭 ── -->
-      <div class="tab-panel hidden" id="tab-monitor">
-        <div class="monitor-header">
-          <div>
-            <div class="panel-title" id="monitor-title">수업 모니터링</div>
-            <div class="panel-sub" id="monitor-sub">수업을 선택해주세요</div>
-          </div>
-          <div class="monitor-stats">
-            <div class="mstat"><div class="mstat-val" id="m-total">0</div><div class="mstat-label">전체</div></div>
-            <div class="mstat"><div class="mstat-val" id="m-focus" style="color:#22c55e">0</div><div class="mstat-label">집중</div></div>
-            <div class="mstat"><div class="mstat-val" id="m-alert" style="color:#ef4444">0</div><div class="mstat-label">경고</div></div>
-            <div class="mstat"><div class="mstat-val" id="m-avg" style="color:#FF7B00">0%</div><div class="mstat-label">평균</div></div>
-          </div>
-        </div>
-
-        <div class="filter-row">
-          <input class="filter-search" type="text" placeholder="🔍 학생 이름 검색..."
-                 oninput="filterStudents(this.value)">
-          <div class="filter-btns">
-            <button class="filter-btn active" onclick="setFilter('all',this)">전체</button>
-            <button class="filter-btn" onclick="setFilter('alert',this)">⚠️ 경고</button>
-            <button class="filter-btn" onclick="setFilter('normal',this)">✅ 정상</button>
-          </div>
-        </div>
-
-        <div class="student-grid" id="student-grid">
-          <div class="empty-state">
-            <div class="empty-icon">🎓</div>
-            <div class="empty-text">위에서 수업을 선택하면<br>학생 현황이 표시됩니다</div>
-          </div>
+      <div id="pdf-page-2" style="width:100%;max-width:595px;display:none;">
+        <div style="background:#fff;border-radius:8px;padding:32px;box-shadow:0 4px 20px rgba(0,0,0,0.2);min-height:842px;font-family:'Pretendard',sans-serif;">
+          <div id="pdf-content-2"></div>
         </div>
       </div>
-
-      <!-- ── 리포트 탭 ── -->
-      <div class="tab-panel hidden" id="tab-report">
-        <div class="report-header-row">
-          <div>
-            <div class="panel-title">수업 리포트</div>
-            <div class="panel-sub">수업별 집중도 & 참여 기록</div>
-          </div>
-          <button class="csv-btn" onclick="exportCSV()">📥 CSV 내보내기</button>
-        </div>
-
-        <div class="report-sum-row" id="report-sum-row">
-          <div class="rsum-card"><div class="rsum-icon">📅</div><div class="rsum-val" style="color:#a5b4fc">4회</div><div class="rsum-label">총 수업</div></div>
-          <div class="rsum-card"><div class="rsum-icon">⏱</div><div class="rsum-val" style="color:#22c55e">8h 30m</div><div class="rsum-label">총 시간</div></div>
-          <div class="rsum-card"><div class="rsum-icon">🎯</div><div class="rsum-val" style="color:#FF7B00">81.5%</div><div class="rsum-label">평균 집중도</div></div>
-          <div class="rsum-card"><div class="rsum-icon">⚠️</div><div class="rsum-val" style="color:#ef4444">40회</div><div class="rsum-label">총 경고</div></div>
-        </div>
-
-        <div class="session-table">
-          <div class="session-thead">수업 기록</div>
-          <div id="session-list"></div>
-        </div>
-      </div>
-
     </div>
   </div>
+</div>
 
-  <script src="js/common.js"></script>
-  <script src="js/admin.js"></script>
+<div class="admin-layout">
+
+  <!-- ══ 사이드바 ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo-wrap">
+      <img src="assets/images/logo-2.png" alt="LIKELION" class="sidebar-logo-img"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="sidebar-lion-icon" style="display:none">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+      </div>
+      <span class="sidebar-brand-text">LIKE LION</span>
+    </div>
+    <nav class="sidebar-nav" id="sidebar-nav">
+      <button class="nav-item active" data-tab="dashboard">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        수업 대시보드
+      </button>
+      <button class="nav-item" data-tab="profile">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        프로필
+      </button>
+      <button class="nav-item" data-tab="report">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        리포트
+      </button>
+      <button class="nav-item" data-tab="setting">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        설정
+      </button>
+      <button class="nav-item signout" id="nav-signout">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        나가기
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ══ 메인 ══ -->
+  <main class="admin-main">
+    <header class="admin-header">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" class="search-input" placeholder="Search here...">
+      </div>
+      <div class="header-right">
+        <button class="header-bell">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <span class="bell-dot"></span>
+        </button>
+        <div class="header-profile">
+          <div class="header-profile-info">
+            <span class="profile-name" id="admin-name">관리자</span>
+            <span class="profile-role">대표 강사</span>
+          </div>
+          <img src="https://i.pravatar.cc/150?img=32" alt="프로필" class="profile-avatar" id="header-avatar">
+        </div>
+      </div>
+    </header>
+
+    <div class="view-container">
+
+      <!-- ── 대시보드: 수업 목록 ── -->
+      <div class="view active" id="view-dashboard-list">
+        <div class="view-title-wrap">
+          <h1 class="view-title">나의 수업 목록</h1>
+          <p class="view-subtitle">현재 진행 중이거나 관리 중인 클래스를 선택하세요.</p>
+        </div>
+        <div class="course-grid" id="course-grid">
+          <div class="loading-msg">수업 목록 불러오는 중...</div>
+        </div>
+      </div>
+
+      <!-- ── 대시보드: 수업 상세 ── -->
+      <div class="view" id="view-dashboard-detail">
+        <div class="detail-header">
+          <button class="back-btn" id="btn-back-list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </button>
+          <div class="detail-title-wrap">
+            <div class="detail-title-row">
+              <h1 class="view-title" id="detail-course-name">-</h1>
+              <span class="detail-date" id="detail-date">-</span>
+              <!-- 수업중 / 수업종료 배지 -->
+              <span id="detail-status-badge" style="display:none;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;"></span>
+            </div>
+            <p class="view-subtitle">선택한 일자의 비대면 클래스 실시간/결과 요약</p>
+          </div>
+          <!-- 날짜 선택 버튼 -->
+          <div style="position:relative;flex-shrink:0;">
+            <button id="btn-date-picker" style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);transition:border-color 0.2s;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#FF7710" stroke-width="2" width="16" height="16"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <div style="text-align:left;">
+                <div style="font-size:10px;color:#9ca3af;font-weight:600;line-height:1;">조회 일자 변경</div>
+                <div id="date-picker-label" style="font-size:13px;font-weight:700;color:#111827;line-height:1.4;">오늘</div>
+              </div>
+            </button>
+            <input type="date" id="detail-date-input" style="position:absolute;top:100%;right:0;opacity:0;pointer-events:none;width:0;height:0;">
+          </div>
+        </div>
+        <div class="stat-cards">
+          <div class="stat-card">
+            <div class="stat-card-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+            <div><div class="stat-val" id="d-students">-</div><div class="stat-label">당일 출석 인원</div><div class="stat-badge green">전원 출석 완료</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-icon orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div><div class="stat-val" id="d-focus">-</div><div class="stat-label">당일 평균 집중도</div><div class="stat-badge green">양호함</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+            <div><div class="stat-val" id="d-alert">-</div><div class="stat-label">당일 경고 발생</div><div class="stat-badge red">관리 요망</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header-row">
+            <div><div class="card-title">당일 학생별 수업 태도</div><div class="card-subtitle">실시간 감지 기준 집중도 현황</div></div>
+          </div>
+          <div class="student-table-head"><span>#</span><span>학생 이름</span><span class="align-center">수업 태도</span><span class="align-right">상태</span></div>
+          <div id="student-attitude-list"><div class="empty-msg">접속 중인 학생이 없습니다</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header-row">
+            <div><div class="card-title">당일 시간대별 집중도 흐름</div><div class="card-subtitle">실시간 웹캠 분석 데이터 기반</div></div>
+            <div class="chart-legend">
+              <span class="legend-dot indigo"></span><span>집중도</span>
+              <span class="legend-dot orange"></span><span>졸음 빈도</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="focus-chart" viewBox="0 0 1000 300" preserveAspectRatio="none" class="chart-svg">
+              <defs><linearGradient id="focusGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#6366f1" stop-opacity="0.15"/><stop offset="100%" stop-color="#6366f1" stop-opacity="0"/></linearGradient></defs>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 리포트 뷰 ── -->
+      <div class="view" id="view-report">
+        <div class="report-top-row">
+          <div>
+            <h1 class="view-title" id="report-main-title">기간별 누적 리포트</h1>
+            <p class="view-subtitle">과정별 성취도 평가 및 인사/수료 기준 증빙 데이터</p>
+          </div>
+          <div class="report-controls">
+            <button class="print-btn" id="btn-open-pdf" style="padding:9px 18px;font-size:13px;white-space:nowrap;display:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              PDF 출력
+            </button>
+            <select class="ctrl-select" id="report-course-select"><option value="">수업을 선택해주세요</option></select>
+            <select class="ctrl-select" id="report-period-select">
+              <option value="last_1_week">최근 1주일</option>
+              <option value="last_1_month" selected>최근 1개월</option>
+              <option value="all_term">과정 전체 누적</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 선택 전 빈 상태 -->
+        <div id="report-empty" class="report-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5" width="48" height="48"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <h2>분석할 클래스를 선택하세요</h2>
+          <p>상단 드롭다운에서 조회할 과정과 기간을 선택하시면<br>수료율, 장기 집중도 추이, 요주의 학생 목록을 확인할 수 있습니다.</p>
+        </div>
+
+        <!-- 선택 후 내용 -->
+        <div id="report-content" style="display:none;flex-direction:column;gap:20px;">
+          <div class="stat-cards">
+            <div class="stat-card"><div class="stat-card-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-val" id="r-attendance">-</div><div class="stat-label">선택 기간 평균 출석률</div><div class="stat-badge blue">정상참여 비율 높음</div></div></div>
+            <div class="stat-card"><div class="stat-card-icon orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div><div class="stat-val" id="r-focus">-</div><div class="stat-label">선택 기간 평균 집중도</div><div class="stat-badge green" id="r-focus-badge">-</div></div></div>
+            <div class="stat-card"><div class="stat-card-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div><div class="stat-val" id="r-alerts">-</div><div class="stat-label">총 경고 발생</div><div class="stat-badge red">집중 상담 필요</div></div></div>
+          </div>
+          <div class="card">
+            <div class="card-header-row"><div><div class="card-title">시간대별 평균 누적 집중도</div><div class="card-subtitle">해당 기간 동안의 전체 수업 패턴 분석</div></div><div class="chart-legend"><span class="legend-dot orange"></span><span>평균 집중도</span></div></div>
+            <div class="chart-wrap"><svg id="report-chart" viewBox="0 0 1000 300" preserveAspectRatio="none" class="chart-svg"><defs><linearGradient id="reportGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.15"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs></svg></div>
+          </div>
+          <div class="two-col-grid">
+            <div class="card"><div class="card-title" style="color:#f97316;display:flex;align-items:center;gap:6px;margin-bottom:16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>누적 주의 구간 도출</div><div class="insight-item"><div class="insight-dot orange"></div><div><div class="insight-title">고질적인 식후 집중도 저하</div><div class="insight-desc">조회 기간 내내 13:00 구간의 평균 집중도가 50%를 밑돕니다. 커리큘럼 조정을 권장합니다.</div></div></div></div>
+            <div class="card"><div class="card-title" style="color:#FF7B00;display:flex;align-items:center;gap:6px;margin-bottom:16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>장기 운영 인사이트</div><div class="insight-item"><div class="insight-dot orange"></div><div><div class="insight-title">안정적인 출석 유지율</div><div class="insight-desc">과정 초반 대비 출석률 저하가 발생하지 않았습니다. 우수한 관리 상태입니다.</div></div></div></div>
+          </div>
+          <div class="card"><div class="card-title" style="margin-bottom:6px;">누적 집중 관리 요망 학생 TOP 5</div><div class="card-subtitle" style="margin-bottom:16px;">* 선택된 기간 내에 경고 누적 횟수가 가장 많은 학생입니다. 1:1 면담을 권장합니다.</div><div id="top5-list"></div></div>
+          <div class="card">
+            <div class="card-header-row" style="margin-bottom:16px;"><div class="card-title">수업 기록</div></div>
+            <div class="session-table-head"><span>날짜</span><span>수업 정보</span><span class="align-center">평균 집중도</span><span class="align-center">경고</span><span>집중도 바</span></div>
+            <div id="session-list"><div class="empty-msg">세션 기록이 없습니다</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 프로필 뷰 ── -->
+      <div class="view" id="view-profile">
+        <h1 class="view-title" style="margin-bottom:4px;">내 프로필</h1>
+        <p class="view-subtitle" style="margin-bottom:32px;">개인 정보 및 계정 설정을 관리하세요.</p>
+        <div class="profile-layout">
+          <div class="card profile-card">
+            <div class="profile-avatar-wrap">
+              <img id="profile-big-img" src="assets/images/default-avatar.png" class="profile-big-avatar" onerror="this.src='https://placehold.co/100x100/f3f4f6/9ca3af?text=👤'">
+              <button class="profile-avatar-edit-btn" id="btn-edit-avatar" title="사진 변경">📷</button>
+              <input type="file" id="profile-img-input" accept="image/*" style="display:none">
+            </div>
+            <div class="profile-big-name" id="profile-name-text">관리자</div>
+            <div class="profile-big-role">대표 강사 / 시스템 관리자</div>
+            <p class="profile-big-desc">비대면 클래스 운영 및 실시간 학생 태도 분석 시스템 관리를 담당하고 있습니다.</p>
+            <button class="profile-edit-btn" id="btn-profile-edit">프로필 편집</button>
+          </div>
+          <div class="profile-right">
+            <div class="card">
+              <div class="card-title" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #f3f4f6;">상세 정보</div>
+              <div class="profile-info-grid">
+                <div class="profile-info-item"><div class="pinfo-icon">✉️</div><div><div class="pinfo-label">이메일</div><div class="pinfo-val"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="6607020b0f08260a0f0d030a0f090848080312">[email&#160;protected]</a></div></div></div>
+                <div class="profile-info-item"><div class="pinfo-icon">📞</div><div><div class="pinfo-label">연락처</div><div class="pinfo-val">010-1234-5678</div></div></div>
+                <div class="profile-info-item"><div class="pinfo-icon">🏢</div><div><div class="pinfo-label">소속 기관</div><div class="pinfo-val">멋쟁이사자처럼 (LIKELION)</div></div></div>
+                <div class="profile-info-item"><div class="pinfo-icon">📍</div><div><div class="pinfo-label">근무지</div><div class="pinfo-val">서울특별시 강남구 테헤란로</div></div></div>
+              </div>
+            </div>
+            <div class="card" style="margin-top:16px;">
+              <div class="card-title" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #f3f4f6;">보안 및 계정</div>
+              <div class="security-item"><div style="display:flex;align-items:center;gap:12px;"><div class="sec-icon blue">🛡️</div><div><div class="sec-title">2단계 인증 (2FA)</div><div class="sec-desc">계정 보안을 위해 2단계 인증이 활성화되어 있습니다.</div></div></div><button class="sec-btn">설정 관리</button></div>
+              <div class="security-item"><div style="display:flex;align-items:center;gap:12px;"><div class="sec-icon yellow">🔑</div><div><div class="sec-title">비밀번호 변경</div><div class="sec-desc">마지막 변경일: 2026. 01. 15</div></div></div><button class="sec-btn">비밀번호 변경</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 설정 뷰 ── -->
+      <div class="view" id="view-setting">
+        <!-- 제목 + 다크모드 한 줄 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div>
+            <h1 class="view-title" style="margin-bottom:2px;">시스템 설정</h1>
+            <p class="view-subtitle">대시보드 환경 및 AI 분석 파라미터를 설정합니다.</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            <span style="font-size:12px;font-weight:600;color:#4b5563;">🖥️ 다크 모드</span>
+            <div class="toggle" id="dark-mode-toggle"></div>
+          </div>
+        </div>
+
+        <!-- 4패널 2x2 -->
+        <div class="setting-grid-4">
+
+          <!-- 알림 및 메시지 -->
+          <div class="card setting-card">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;"><span style="color:#6366f1;">🔔</span> 알림 및 메시지 설정</div>
+            <div class="toggle-item"><div><div class="toggle-title">학생 화면 이탈 실시간 알림</div><div class="toggle-desc">학생이 1분 이상 화면에서 사라질 경우 알림을 받습니다.</div></div><div class="toggle on" id="toggle-absent"></div></div>
+            <div class="toggle-item"><div><div class="toggle-title">심한 졸음 감지 경고</div><div class="toggle-desc">졸음 상태가 지속될 경우 시스템 화면에 경고창을 띄웁니다.</div></div><div class="toggle on" id="toggle-drowsy"></div></div>
+            <div class="toggle-item"><div><div class="toggle-title">경고 알림음</div><div class="toggle-desc">졸음·이탈 감지 시 알림음을 재생합니다.</div></div><div class="toggle on" id="toggle-sound"></div></div>
+            <div class="toggle-item" style="border-bottom:none;"><div><div class="toggle-title" style="color:#9ca3af;">주간 리포트 자동 발송</div><div class="toggle-desc" style="color:#d1d5db;">매주 금요일 등록된 이메일로 전송합니다.</div></div><div class="toggle" id="toggle-report"></div></div>
+          </div>
+
+          <!-- AI 감지 파라미터 -->
+          <div class="card setting-card">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;"><span style="color:#FF7B00;">⚡</span> AI 감지 파라미터 설정</div>
+            <div class="range-item">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span class="range-label">졸음 감지 민감도</span><span class="range-val orange" id="drowsy-val-label">보통 (Standard)</span></div>
+              <input type="range" id="drowsy-range" min="1" max="3" value="2" class="range-input orange">
+              <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#9ca3af;"><span>둔감</span><span>민감</span></div>
+            </div>
+            <div class="range-item" style="margin-top:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span class="range-label">자리 이탈 허용 시간</span><span class="range-val red" id="absent-val-label">60초</span></div>
+              <input type="range" id="absent-range" min="10" max="180" value="60" step="10" class="range-input red">
+              <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#9ca3af;"><span>엄격 (10초)</span><span>여유 (3분)</span></div>
+            </div>
+            <div class="range-item" style="margin-top:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span class="range-label">시선 이탈 허용 시간</span><span class="range-val indigo" id="gaze-val-label">15초</span></div>
+              <input type="range" id="gaze-range" min="5" max="60" value="15" step="5" class="range-input indigo">
+              <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#9ca3af;"><span>엄격 (5초)</span><span>여유 (60초)</span></div>
+            </div>
+          </div>
+
+          <!-- 데이터 및 저장소 -->
+          <div class="card setting-card">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;"><span style="color:#10b981;">🗄️</span> 데이터 및 저장소 관리</div>
+            <div class="select-item">
+              <label class="select-label">웹캠 분석 데이터 보관 기간</label>
+              <select class="ctrl-select full"><option>7일 후 자동 삭제</option><option selected>30일 후 자동 삭제 (권장)</option><option>90일 후 자동 삭제</option><option>영구 보관</option></select>
+              <p style="font-size:11px;color:#9ca3af;margin-top:6px;">* 영상 자체는 저장되지 않으며, 메타 데이터 및 통계만 보관됩니다.</p>
+            </div>
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center;">
+              <div><div style="font-size:13px;font-weight:700;color:#111827;">시스템 캐시 초기화</div><div style="font-size:11px;color:#9ca3af;margin-top:2px;">대시보드가 느려질 경우 사용하세요.</div></div>
+              <button id="btn-clear-cache" style="padding:7px 14px;background:#fee2e2;color:#ef4444;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">캐시 지우기</button>
+            </div>
+          </div>
+
+          <!-- 대시보드 설정 -->
+          <div class="card setting-card">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;"><span style="color:#3b82f6;">📊</span> 대시보드 설정</div>
+            <div class="select-item">
+              <label class="select-label">실시간 새로고침 주기</label>
+              <select class="ctrl-select full" id="poll-interval-select">
+                <option value="3000">3초 (빠름)</option>
+                <option value="5000" selected>5초 (기본값)</option>
+                <option value="10000">10초 (절전)</option>
+                <option value="30000">30초 (최소)</option>
+              </select>
+            </div>
+            <div class="toggle-item" style="margin-top:14px;border-bottom:none;">
+              <div><div class="toggle-title">수업 종료 후 세션 자동 저장</div><div class="toggle-desc">수업 종료 시 Supabase에 자동으로 세션 데이터를 저장합니다.</div></div>
+              <div class="toggle on" id="toggle-autosave"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /view-container -->
+  </main>
+</div><!-- /admin-layout -->
+
+<script src="js/common.js"></script>
+<script src="js/admin.js"></script>
 </body>
 </html>

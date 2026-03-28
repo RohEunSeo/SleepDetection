@@ -4,41 +4,92 @@
 
 let currentTab = 'student';
 
+// ── 탭 전환 ──────────────────────────────────
 function selectTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-    const tabs = ['student', 'instructor', 'admin'];
-    btn.classList.toggle('active', tabs[i] === tab);
+    btn.classList.toggle('active', ['student', 'instructor', 'admin'][i] === tab);
   });
 
-  const roomGroup      = document.getElementById('room-code-group');
-  const adminNotice    = document.getElementById('admin-notice');
-  const instructorNote = document.getElementById('instructor-notice');
-  const btnText        = document.getElementById('login-btn-text');
+  const roomGroup   = document.getElementById('room-code-group');
+  const adminNotice = document.getElementById('admin-notice');
+  const courseGroup = document.getElementById('instructor-course-group');
+  const btnText     = document.getElementById('login-btn-text');
 
-  // 기본 숨김
-  if (roomGroup)      roomGroup.style.display      = 'none';
-  if (adminNotice)    adminNotice.style.display     = 'none';
-  if (instructorNote) instructorNote.style.display  = 'none';
+  if (roomGroup)   roomGroup.style.display   = 'none';
+  if (adminNotice) adminNotice.style.display  = 'none';
+  if (courseGroup) courseGroup.style.display  = 'none';
 
   if (tab === 'student') {
-    // 수강생 — 방 코드 입력 필요
     if (roomGroup) roomGroup.style.display = 'block';
     if (btnText)   btnText.textContent     = '수업 입장하기';
+
   } else if (tab === 'instructor') {
-    // 강사 — 방 코드 입력 없음, 안내 메시지만
-    if (instructorNote) instructorNote.style.display = 'block';
-    if (btnText)        btnText.textContent          = '강의실 입장하기';
+    if (courseGroup) courseGroup.style.display = 'block';
+    if (btnText)     btnText.textContent       = '강의실 입장하기';
+
+    // 이미 이름이 입력돼 있으면 바로 과정명 확인
+    const name = document.getElementById('input-name')?.value.trim();
+    if (name) loadCourseForInstructor(name);
+    else      showCourseInput();
+
   } else if (tab === 'admin') {
-    // 매니저 — 방 코드 없음
     if (adminNotice) adminNotice.style.display = 'block';
     if (btnText)     btnText.textContent       = '대시보드 입장';
   }
 }
 
+// ── 이름 입력 시 호출 (oninput) ──────────────
+function onNameInput() {
+  if (currentTab !== 'instructor') return;
+  const name = document.getElementById('input-name')?.value.trim();
+  if (name) loadCourseForInstructor(name);
+  else      showCourseInput();
+}
+
+// ── 해당 강사 이름에 맞는 과정명 불러오기 ────
+function loadCourseForInstructor(name) {
+  const key   = `instructor_${name}_course`;
+  const saved = localStorage.getItem(key);
+
+  const inputWrap = document.getElementById('course-input-wrap');
+  const savedWrap = document.getElementById('course-saved-wrap');
+  const savedText = document.getElementById('course-saved-text');
+
+  if (saved) {
+    if (savedText) savedText.textContent   = saved;
+    if (inputWrap) inputWrap.style.display = 'none';
+    if (savedWrap) savedWrap.style.display = 'block';
+  } else {
+    showCourseInput();
+  }
+}
+
+// ── 과정명 입력창만 보이게 ────────────────────
+function showCourseInput() {
+  const inputWrap = document.getElementById('course-input-wrap');
+  const savedWrap = document.getElementById('course-saved-wrap');
+  const inputEl   = document.getElementById('input-course');
+
+  if (inputWrap) inputWrap.style.display = 'block';
+  if (savedWrap) savedWrap.style.display = 'none';
+  if (inputEl)   inputEl.value           = '';
+}
+
+// ── 과정명 변경 버튼 ──────────────────────────
+function resetCourseName() {
+  const inputWrap = document.getElementById('course-input-wrap');
+  const savedWrap = document.getElementById('course-saved-wrap');
+  const inputEl   = document.getElementById('input-course');
+
+  if (inputWrap) inputWrap.style.display = 'block';
+  if (savedWrap) savedWrap.style.display = 'none';
+  if (inputEl)   { inputEl.value = ''; inputEl.focus(); }
+}
+
+// ── 입장하기 ─────────────────────────────────
 function doLogin() {
-  const name     = document.getElementById('input-name')?.value.trim() || '';
-  const roomCode = document.getElementById('input-room')?.value.trim() || '';
+  const name = document.getElementById('input-name')?.value.trim() || '';
 
   if (!name) {
     showToast('이름을 입력해주세요.');
@@ -46,36 +97,47 @@ function doLogin() {
     return;
   }
 
-  // 수강생만 방 코드 필수
-  if (currentTab === 'student' && !roomCode) {
-    showToast('방 코드를 입력해주세요.');
-    document.getElementById('input-room')?.focus();
-    return;
-  }
+  if (currentTab === 'student') {
+    const roomCode = document.getElementById('input-room')?.value.trim() || '';
+    if (!roomCode) {
+      showToast('방 코드를 입력해주세요.');
+      document.getElementById('input-room')?.focus();
+      return;
+    }
+    sessionStorage.setItem('userName', name);
+    sessionStorage.setItem('userRole', 'student');
+    sessionStorage.setItem('roomCode', roomCode);
 
-  sessionStorage.setItem('userName', name);
-  sessionStorage.setItem('userRole', currentTab);
-  sessionStorage.setItem('roomCode', roomCode || '');
+  } else if (currentTab === 'instructor') {
+    const key        = `instructor_${name}_course`;
+    const saved      = localStorage.getItem(key);
+    const inputEl    = document.getElementById('input-course');
+    const courseName = saved || inputEl?.value.trim() || '';
+
+    if (!courseName) {
+      showToast('과정명을 입력해주세요.');
+      inputEl?.focus();
+      return;
+    }
+
+    // 강사 이름 기준으로 저장
+    localStorage.setItem(key, courseName);
+
+    sessionStorage.setItem('userName', name);
+    sessionStorage.setItem('userRole', 'instructor');
+    sessionStorage.setItem('courseName', courseName);
+    sessionStorage.setItem('roomCode', '');
+
+  } else if (currentTab === 'admin') {
+    sessionStorage.setItem('userName', name);
+    sessionStorage.setItem('userRole', 'admin');
+    sessionStorage.setItem('roomCode', '');
+  }
 
   navigateTo(currentTab);
 }
 
-function quickLogin(role) {
-  currentTab = role;
-  // 수강생 데모일 때만 방 코드 자동 입력
-  if (role === 'student') {
-    const roomInput = document.getElementById('input-room');
-    if (roomInput && !roomInput.value.trim()) roomInput.value = 'LION-2025';
-  }
-  // 이름도 없으면 데모 이름 자동 입력
-  const nameInput = document.getElementById('input-name');
-  if (nameInput && !nameInput.value.trim()) {
-    const demoNames = { student: '수강생', instructor: '강사', admin: '매니저' };
-    nameInput.value = demoNames[role] || role;
-  }
-  navigateTo(role);
-}
-
+// ── 기타 유틸 ────────────────────────────────
 function setRoomCode(code) {
   const el = document.getElementById('input-room');
   if (el) el.value = code;
@@ -100,6 +162,6 @@ function navigateTo(role) {
   if (map[role]) window.location.href = map[role];
 }
 
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });

@@ -631,14 +631,15 @@ function confirmLeave(goReport) {
 
 // ── 방 생성 ───────────────────────────────────
 async function createRoom() {
-  const btn      = document.getElementById('create-room-btn');
-  const userName = sessionStorage.getItem('userName') || '강사';
+  const btn        = document.getElementById('create-room-btn');
+  const userName   = sessionStorage.getItem('userName')  || '강사';
+  const courseName = sessionStorage.getItem('courseName') || '';  // ← 온보딩에서 저장한 과정명
   btn.disabled    = true;
   btn.textContent = '생성 중...';
 
   try {
     const res = await fetch(
-      `${BACKEND_URL}/api/create-room?instructor_name=${encodeURIComponent(userName)}`,
+      `${BACKEND_URL}/api/create-room?instructor_name=${encodeURIComponent(userName)}&course_name=${encodeURIComponent(courseName)}`,
       { method: 'POST' }
     );
     if (!res.ok) throw new Error('방 생성 실패');
@@ -832,8 +833,15 @@ function startTimer() {
 
 // ── 초기화 ────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  const userName = sessionStorage.getItem('userName') || '강사';
-  const roomCode = sessionStorage.getItem('roomCode') || '';
+  const userName   = sessionStorage.getItem('userName')   || '강사';
+  const roomCode   = sessionStorage.getItem('roomCode')   || '';
+  const courseName = sessionStorage.getItem('courseName') || '';
+
+  // 과정명 헤더에 고정 표시 (항상 입력한 과정명 유지)
+  const classLabel = document.getElementById('inst-class-label');
+  if (classLabel) {
+    classLabel.textContent = courseName || '멋쟁이사자처럼';
+  }
 
   const avatarEl = document.getElementById('inst-avatar-text');
   if (avatarEl) avatarEl.textContent = userName.charAt(0);

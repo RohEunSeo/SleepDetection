@@ -11,10 +11,13 @@ router = APIRouter(prefix="/api", tags=["room"])
 
 
 @router.post("/create-room")
-async def create_room(instructor_name: str = "강사"):
+async def create_room(
+    instructor_name: str = "강사",
+    course_name:     str = "",        # ← 추가: 과정명
+):
     """
     강사 전용 — 새 방 코드 생성 + Daily.co 방 개설
-    POST /api/create-room?instructor_name=김강사
+    POST /api/create-room?instructor_name=노은서&course_name=AI엔지니어링과정
     """
     if not DAILY_API_KEY:
         raise HTTPException(status_code=500, detail="DAILY_API_KEY 미설정")
@@ -27,8 +30,12 @@ async def create_room(instructor_name: str = "강사"):
         is_owner=True,
     )
 
-    # 세션 자동 시작
-    session = store.create(room_code=room_code, instructor=instructor_name)
+    # 세션 자동 시작 (course_name 포함)
+    session = store.create(
+        room_code   = room_code,
+        instructor  = instructor_name,
+        course_name = course_name,
+    )
 
     return {
         "room_code":  room_code,
@@ -40,9 +47,9 @@ async def create_room(instructor_name: str = "강사"):
 
 @router.get("/room-token")
 async def get_room_token(
-    user_name:  str,
-    room_code:  str = "LION-2025",
-    role:       str = "student",
+    user_name: str,
+    room_code: str = "LION-2025",
+    role:      str = "student",
 ):
     """
     학생/강사 입장 토큰 발급
