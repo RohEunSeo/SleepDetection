@@ -11,6 +11,15 @@ from session_store import store
 router = APIRouter(prefix="/api", tags=["session"])
 
 
+@router.get("/courses")
+async def list_courses():
+    """
+    등록된 과정명 목록 조회 (관리자 드롭다운용)
+    GET /api/courses
+    """
+    return store.get_courses()
+
+
 @router.post("/session/end")
 async def end_session(room_code: str):
     """
@@ -24,13 +33,24 @@ async def end_session(room_code: str):
     return {"session_id": session.session_id, "summary": session.summary()}
 
 
+# ★ /sessions/active 가 /sessions/{session_id} 보다 반드시 위에 있어야 함
+@router.get("/sessions/active")
+async def list_active_sessions():
+    """
+    현재 진행 중인 세션 목록 (관리자 대시보드 실시간용)
+    GET /api/sessions/active
+    """
+    return store.get_active_sessions()
+
+
 @router.get("/sessions")
-async def list_sessions():
+async def list_sessions(course_name: str | None = None):
     """
-    전체 세션 목록 조회 (리포트 탭용)
-    GET /api/sessions
+    세션 목록 조회 (관리자 리포트 탭용)
+    GET /api/sessions                          → 전체
+    GET /api/sessions?course_name=AI엔지니어링 → 과정별 필터
     """
-    return [s.summary() for s in store.get_all()]
+    return store.get_all(course_name=course_name)
 
 
 @router.get("/sessions/{session_id}")

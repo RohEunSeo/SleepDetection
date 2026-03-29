@@ -136,6 +136,8 @@ function getWsBaseUrl() {
   return BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
 }
 
+window.dailyCall = null;
+
 // ── 자막 표시/수신 ───────────────────────────
 function renderCaption(text, speaker = '강사') {
   const captionEl = document.getElementById('student-live-caption');
@@ -856,14 +858,18 @@ async function joinDailyRoom(userName, role) {
     const { token, room_url } = await res.json();
 
     dailyCall = DailyIframe.createCallObject({ audioSource: false, videoSource: true });
+    window.dailyCall = dailyCall;
     await dailyCall.join({ url: room_url, token });
     try { await dailyCall.setLocalVideo(true); } catch {}
 
     dailyCall
+      .on('joined-meeting', e => console.log('학생 joined-meeting', e))
+      .on('participant-updated', e => console.log('학생 participant-updated', e.participant?.user_name, e.participant?.local, e.participant?.owner, e.participant?.tracks))
       .on('participant-joined', onParticipantJoined)
-      .on('participant-updated', onParticipantUpdated)
       .on('participant-left', e => removePeerTile(e.participant.session_id))
-      .on('track-started', onTrackStarted);
+      .on('track-started', onTrackStarted)
+      .on('track-stopped', e => console.log('학생 track-stopped', e.participant?.user_name, e.track?.kind))
+      .on('error', e => console.warn('학생 Daily error', e));
 
     const existing = dailyCall.participants();
     Object.values(existing).forEach(p => {
@@ -904,6 +910,7 @@ async function joinDailyRoom(userName, role) {
 function onParticipantJoined(e) {
   if (e.participant.local) return;
   const { session_id: sid, user_name: name = '참여자', owner } = e.participant;
+  console.log('학생 participant-joined', name, { sid, owner, tracks: e.participant.tracks });
   if (owner) {
     attachInstructorVideo(e.participant);
   } else {
@@ -913,6 +920,7 @@ function onParticipantJoined(e) {
 
 function onParticipantUpdated(e) {
   if (e.participant.local) return;
+  console.log('학생 onParticipantUpdated', e.participant.user_name, e.participant.tracks);
   if (e.participant.owner) attachInstructorVideo(e.participant);
 }
 
@@ -920,6 +928,7 @@ function onTrackStarted(e) {
   if (e.participant.local) return;
   if (e.track.kind !== 'video') return;
   const sid = e.participant.session_id;
+  console.log('학생 track-started', e.participant.user_name, { owner: e.participant.owner, sid, persistentTrack: e.participant.tracks?.video?.persistentTrack });
 
   if (e.participant.owner) {
     const instVideo = document.getElementById('instructor-video');

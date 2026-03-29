@@ -6,6 +6,31 @@
   <title>Sleep2Wake · 멋쟁이사자처럼</title>
   <link rel="stylesheet" href="css/common.css">
   <link rel="stylesheet" href="css/login.css">
+  <style>
+    .course-saved-box {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px;
+      background: rgba(255,123,0,0.08);
+      border: 1px solid rgba(255,123,0,0.3);
+      border-radius: 10px;
+    }
+    .course-saved-name {
+      font-size: 14px; font-weight: 600;
+      color: #FF7B00; flex: 1;
+    }
+    .course-saved-check {
+      font-size: 14px; color: #22c55e; font-weight: 700;
+    }
+    .course-change-btn {
+      padding: 4px 12px;
+      background: transparent;
+      border: 1px solid rgba(255,123,0,0.4);
+      border-radius: 6px;
+      color: #FF7B00; font-size: 12px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .course-change-btn:hover { background: rgba(255,123,0,0.12); }
+  </style>
 </head>
 <body>
 
@@ -58,7 +83,7 @@
 
       <div class="card-header">
         <div class="card-title">수업 입장하기</div>
-        <div class="card-sub">이름과 방 코드를 입력해주세요</div>
+        <div class="card-sub">이름을 입력하고 역할을 선택해주세요</div>
       </div>
 
       <!-- 역할 탭 -->
@@ -73,10 +98,10 @@
         <label class="form-label">이름</label>
         <input class="form-input" type="text" id="input-name"
                placeholder="본인 이름을 입력하세요" maxlength="10"
-               oninput="syncRoomCode()">
+               oninput="onNameInput()">
       </div>
 
-      <!-- 방 코드 입력 -->
+      <!-- 수강생: 방 코드 입력 -->
       <div class="form-group" id="room-code-group">
         <label class="form-label">
           방 코드
@@ -84,32 +109,42 @@
         </label>
         <div class="room-input-wrap">
           <input class="form-input room-input" type="text" id="input-room"
-                 placeholder="예: LION-2025"
-                 maxlength="12"
+                 placeholder="예: sleep2wake-xxxx"
+                 maxlength="30"
                  oninput="this.value = this.value.toUpperCase()">
           <button class="room-paste-btn" onclick="pasteRoomCode()" title="붙여넣기">
             📋
           </button>
         </div>
-        <!-- 빠른 코드 선택 (데모용) -->
-        <div class="quick-codes">
-          <span class="quick-codes-label">데모 코드:</span>
-          <button class="quick-code-btn" onclick="setRoomCode('LION-2025')">LION-2025</button>
-          <button class="quick-code-btn" onclick="setRoomCode('LION-2026')">LION-2026</button>
-        </div>
       </div>
 
-      <!-- 매니저는 방 코드 불필요 -->
+      <!-- 매니저: 방 코드 불필요 -->
       <div class="form-group" id="admin-notice" style="display:none;">
         <div class="admin-notice-box">
           🛡️ 매니저는 방 코드 없이 전체 수업을 모니터링합니다
         </div>
       </div>
 
-      <!-- 강사는 입장 후 방 코드 생성 -->
-      <div class="form-group" id="instructor-notice" style="display:none;">
-        <div class="admin-notice-box" style="border-color:rgba(255,123,0,0.25);background:rgba(255,123,0,0.07);color:var(--orange-400);">
-          🎓 강사는 입장 후 과정 코드를 생성해 학생들에게 공유합니다
+      <!-- 강사: 과정명 입력 -->
+      <div class="form-group" id="instructor-course-group" style="display:none;">
+        <label class="form-label">
+          과정명
+          <span class="form-label-hint">이 과정의 모든 수업에 사용됩니다</span>
+        </label>
+
+        <!-- 첫 입장: 직접 입력 -->
+        <div id="course-input-wrap">
+          <input class="form-input" type="text" id="input-course"
+                 placeholder="예: AI 엔지니어링 과정" maxlength="30">
+        </div>
+
+        <!-- 두 번째부터: 저장된 과정명 표시 -->
+        <div id="course-saved-wrap" style="display:none;">
+          <div class="course-saved-box">
+            <span class="course-saved-name" id="course-saved-text"></span>
+            <span class="course-saved-check">✓</span>
+            <button class="course-change-btn" onclick="resetCourseName()">변경</button>
+          </div>
         </div>
       </div>
 

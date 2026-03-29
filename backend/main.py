@@ -93,6 +93,19 @@ async def admin_ws(websocket: WebSocket):
                         "role":      "instructor",
                         "timestamp": data.get("timestamp", ""),
                     })
+                elif msg_type == "stretch_start":
+                    await manager.broadcast_to_students({
+                        "type": "stretch_start",
+                    })
+                elif msg_type == "break_start":
+                    await manager.broadcast_to_students({
+                        "type": "break_start",
+                        "duration": data.get("duration", 300),
+                    })
+                elif msg_type == "break_end":
+                    await manager.broadcast_to_students({
+                        "type": "break_end",
+                    })
             except Exception:
                 pass
 
