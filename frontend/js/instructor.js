@@ -664,12 +664,21 @@ async function createRoom() {
 
 function _applyRoomCode(code) {
   currentRoomCode = code;
+  // 과정 코드 표시란에는 실제 코드 유지
   document.getElementById('rcd-code-text').textContent       = code;
   document.getElementById('room-code-display').style.display = 'flex';
   document.getElementById('create-room-btn').style.display   = 'none';
   sessionStorage.setItem('roomCode', code);
+  // 헤더 왼쪽: 멋쟁이사자처럼 · 과정명 날짜
+  const courseName = sessionStorage.getItem('courseName') || '';
+  const today = new Date();
+  const dateLabel = `${today.getMonth()+1}/${today.getDate()}`;
   const classEl = document.getElementById('inst-class-label');
-  if (classEl) classEl.textContent = `멋쟁이사자처럼 · ${code}`;
+  if (classEl) {
+    classEl.textContent = courseName
+      ? `멋쟁이사자처럼 · ${courseName} ${dateLabel}`
+      : `멋쟁이사자처럼 · ${code}`;
+  }
   connectCaptionTextWs();
 }
 
@@ -861,7 +870,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const roomCode   = sessionStorage.getItem('roomCode')   || '';
   const courseName = sessionStorage.getItem('courseName') || '';
 
-  // 과정명 헤더에 고정 표시 (항상 입력한 과정명 유지)
+  // 과정명 헤더에 고정 표시
   const classLabel = document.getElementById('inst-class-label');
   if (classLabel) {
     classLabel.textContent = courseName || '멋쟁이사자처럼';
@@ -870,7 +879,13 @@ window.addEventListener('DOMContentLoaded', () => {
   const avatarEl = document.getElementById('inst-avatar-text');
   if (avatarEl) avatarEl.textContent = userName.charAt(0);
 
-  if (roomCode) _applyRoomCode(roomCode);
+  if (roomCode) {
+    // sessionStorage에 코드 있으면 바로 적용
+    _applyRoomCode(roomCode);
+  } else if (courseName) {
+    // 코드 없어도 과정명 있으면 자동으로 백엔드에서 오늘 세션 조회
+    autoLoadRoomCode(userName, courseName);
+  }
 
   startCamera();
   startTimer();
@@ -879,6 +894,22 @@ window.addEventListener('DOMContentLoaded', () => {
   startRotation();
   if (roomCode) reconnectDailyRoomIfNeeded(userName, roomCode);
 });
+
+// 오늘 날짜 + 과정명으로 기존 세션 자동 조회
+async function autoLoadRoomCode(userName, courseName) {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/create-room?instructor_name=${encodeURIComponent(userName)}&course_name=${encodeURIComponent(courseName)}`,
+      { method: 'POST' }
+    );
+    if (!res.ok) return;
+    const { room_code, token, room_url } = await res.json();
+    _applyRoomCode(room_code);
+    await joinDailyRoom(userName, token, room_url);
+  } catch(e) {
+    console.warn('[강사] 자동 세션 로드 실패:', e.message);
+  }
+}
 
 // ── 강사 채팅 ─────────────────────────────────
 function sendInstructorChat() {

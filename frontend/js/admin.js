@@ -91,7 +91,9 @@ function connectWS() {
 // ── 진행 중 세션 폴링 ─────────────────────
 async function pollActiveSessions() {
   try {
-    const res  = await fetch(`${BACKEND_URL}/api/sessions/active`);
+    const now   = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const res  = await fetch(`${BACKEND_URL}/api/sessions?date=${today}`);
     const data = await res.json();
     activeSessions = Array.isArray(data) ? data : [];
     renderCourseGrid();
@@ -105,7 +107,8 @@ function renderCourseGrid() {
     grid.innerHTML = `
       <div style="grid-column:1/-1;text-align:center;padding:60px 0;color:#9ca3af;">
         <div style="font-size:40px;margin-bottom:12px;">🎓</div>
-        <div style="font-size:14px;">현재 진행 중인 수업이 없습니다</div>
+        <div style="font-size:14px;">오늘 진행된 수업이 없습니다</div>
+        <div style="font-size:12px;margin-top:6px;color:#d1d5db;">강사가 수업을 시작하면 자동으로 표시됩니다</div>
       </div>`;
     return;
   }
@@ -121,9 +124,14 @@ function renderCourseGrid() {
     <div class="course-card" onclick="enterCourse('${s.room_code}', '${s.course_name || s.room_code}', ${isLive})">
       <div class="course-card-header">
         <div class="course-card-name">${s.course_name || s.room_code}</div>
-        ${isLive
-          ? `<span class="live-badge"><span class="live-dot"></span>LIVE</span>`
-          : `<span class="ended-badge">종료됨</span>`}
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${isLive
+            ? `<span class="live-badge"><span class="live-dot"></span>LIVE</span>`
+            : `<span class="ended-badge">종료됨</span>`}
+          <button onclick="event.stopPropagation();deleteSession('${s.session_id}')"
+            style="width:24px;height:24px;border:none;background:#f3f4f6;border-radius:6px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;color:#9ca3af;"
+            title="삭제">🗑️</button>
+        </div>
       </div>
       <div class="course-stats">
         <div class="cstat-box gray">
@@ -142,6 +150,60 @@ function renderCourseGrid() {
       <button class="course-enter-btn">일간 대시보드 보기</button>
     </div>`;
   }).join('');
+}
+
+// ── 삭제 모달 ─────────────────────────────
+let _deleteCallback = null;
+
+function showDeleteModal(title, desc, onConfirm) {
+  document.getElementById('delete-modal-title').textContent = title;
+  document.getElementById('delete-modal-desc').innerHTML = desc;
+  document.getElementById('delete-modal').style.display = 'flex';
+  _deleteCallback = onConfirm;
+  document.getElementById('delete-modal-confirm').onclick = () => {
+    closeDeleteModal();
+    if (_deleteCallback) _deleteCallback();
+  };
+}
+
+function closeDeleteModal() {
+  document.getElementById('delete-modal').style.display = 'none';
+  _deleteCallback = null;
+}
+
+async function deleteSession(sessionId) {
+  showDeleteModal(
+    '수업 기록 삭제',
+    '이 수업 기록을 삭제할까요?<br>삭제된 데이터는 복구할 수 없습니다.',
+    async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/sessions/${sessionId}`, { method: 'DELETE' });
+        if (res.ok) {
+          if (typeof showToast === 'function') showToast('수업 기록이 삭제됐음');
+          pollActiveSessions();
+        }
+      } catch(e) { console.warn('삭제 실패:', e); }
+    }
+  );
+}
+
+async function deleteAllSessions() {
+  const now   = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  showDeleteModal(
+    '오늘 수업 전체 삭제',
+    `오늘(${today}) 수업 기록을 전부 삭제할까요?<br>삭제된 데이터는 복구할 수 없습니다.`,
+    async () => {
+      try {
+        const ids = activeSessions.map(s => s.session_id);
+        await Promise.all(ids.map(id =>
+          fetch(`${BACKEND_URL}/api/sessions/${id}`, { method: 'DELETE' })
+        ));
+        if (typeof showToast === 'function') showToast('오늘 수업 기록이 모두 삭제됐음');
+        pollActiveSessions();
+      } catch(e) { console.warn('전체 삭제 실패:', e); }
+    }
+  );
 }
 
 function enterCourse(roomCode, courseName, isLive) {

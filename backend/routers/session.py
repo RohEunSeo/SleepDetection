@@ -44,13 +44,29 @@ async def list_active_sessions():
 
 
 @router.get("/sessions")
-async def list_sessions(course_name: str | None = None):
+async def list_sessions(course_name: str | None = None, date: str | None = None):
     """
-    세션 목록 조회 (관리자 리포트 탭용)
+    세션 목록 조회
     GET /api/sessions                          → 전체
     GET /api/sessions?course_name=AI엔지니어링 → 과정별 필터
+    GET /api/sessions?date=2026-03-30          → 날짜별 필터 (관리자 대시보드용)
     """
-    return store.get_all(course_name=course_name)
+    return store.get_all(course_name=course_name, date=date)
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """
+    세션 삭제 (관리자 대시보드 카드 삭제용)
+    DELETE /api/sessions/{session_id}
+    """
+    try:
+        from session_store import supabase
+        supabase.table("student_events").delete().eq("session_id", session_id).execute()
+        supabase.table("sessions").delete().eq("session_id", session_id).execute()
+        return {"status": "deleted", "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/sessions/{session_id}")

@@ -76,7 +76,7 @@ class Session:
             s["focus_pct"] = max(0, 100 - penalty)
 
         total     = len(students)
-        duration  = (self.ended_at or datetime.now()) - self.started_at
+        duration  = (self.ended_at or datetime.now()) - self.started_at.replace(tzinfo=None)
         avg_focus = round(
             sum(s["focus_pct"] for s in students.values()) / total
         ) if total > 0 else 0
@@ -184,11 +184,13 @@ class SessionStore:
             print(f"[Supabase] get_active 조회 실패: {e}")
         return None
 
-    def get_all(self, course_name: str | None = None) -> list[dict]:
+    def get_all(self, course_name: str | None = None, date: str | None = None) -> list[dict]:
         try:
             query = supabase.table("sessions").select("*").order("started_at", desc=True)
             if course_name:
                 query = query.eq("course_name", course_name)
+            if date:
+                query = query.eq("date", date)
             res = query.execute()
             return res.data or []
         except Exception as e:
@@ -298,13 +300,15 @@ class SessionStore:
                 print(f"[Supabase] DB 직접 종료 실패: {e}")
 
     def _row_to_session(self, row: dict) -> Session:
+        started = datetime.fromisoformat(row["started_at"])
+        ended   = datetime.fromisoformat(row["ended_at"]) if row.get("ended_at") else None
         return Session(
             session_id  = row["session_id"],
             room_code   = row["room_code"],
             course_name = row.get("course_name", ""),
             instructor  = row.get("instructor", ""),
-            started_at  = datetime.fromisoformat(row["started_at"]),
-            ended_at    = datetime.fromisoformat(row["ended_at"]) if row.get("ended_at") else None,
+            started_at  = started.replace(tzinfo=None),
+            ended_at    = ended.replace(tzinfo=None) if ended else None,
         )
 
 
