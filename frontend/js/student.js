@@ -4,21 +4,22 @@
 
 // ── 감지/상태 기준값 ──────────────────────────
 // ── 1. 시스템 및 초기화 설정 ──────────────────────────────────
-const TOTAL_CHECKS           = 4;      // 온보딩 확인 항목 수
+const TOTAL_CHECKS           = 5;      // 온보딩 확인 항목 수
 const CALIB_FRAMES           = 90;     // 캘리브레이션 수집 프레임 (약 3초)
 const STARTUP_GRACE_SEC      = 2.0;    // 캘리브레이션 직후 상태 판정 유예 시간(초)
 
 // ── 2. 상태 전이 타이머 (초 단위) ─────────────────────────────
-const WARNING_SEC            = 15.0;   // 눈 감김 지속 시 → 졸음 의심
-const DROWSY_SEC             = 30.0;   // 눈 감김 지속 시 → 졸음 확정
+const WARNING_SEC            = 5.0;    // 눈 감김 지속 시 → 졸음 의심
+const DROWSY_SEC             = 10.0;   // 눈 감김 지속 시 → 졸음 확정
 const RECOVER_FOCUSED_SEC    = 2.0;    // 눈 뜨고 유지 시 → 집중 복귀
 const EYE_HIDE_STATUS_SEC    = 2.0;    // 눈 감김 2초 이상 시 집중 배지 숨김
-const DISTRACTED_SEC         = 3.0;    // 고개 이탈 지속 시 → 주의 산만
+const EYE_UNCERTAIN_MARGIN   = 1.15;   // 아래보기에서 EAR가 애매할 때 판독 중 처리
+const DISTRACTED_SEC         = 3.0;    // 고개 이탈 지속 시 → 시선 이탈
 const DISTRACTED_RECOVER_SEC = 1.5;    // 고개 돌아오고 유지 시 → 집중 복귀
 const YAWN_SEC               = 3.0;    // 하품 판정 기준 시간
 
 // ── 3. 얼굴 놓침(Face Lost) 및 이탈 방어 ──────────────────────
-const ABSENT_SEC             = 3.0;    // 얼굴 미감지 지속 시 → 자리 이탈
+const ABSENT_SEC             = 5.0;    // 얼굴 미감지 지속 시 → 자리 이탈
 const FACE_MISSING_SLEEP_SEC = 0.5;    // 졸음 중 얼굴 놓침 → 0.5초 유예 후 졸음 유지
 const DISTRACTED_ABSENT_SEC  = 6.0;    // 주의 산만 중 얼굴 놓침 → 6초 유예 (이탈 방어)
 const ABSENCE_FRAMES         = 30;     // 얼굴 미감지 프레임 기준 (보조)
@@ -74,6 +75,7 @@ const STATUS_UI = {
   [STATES.DROWSY]: { text: '🔴 졸음 확정', bg: 'rgba(239,68,68,0.85)' },
   [STATES.ABSENT]: { text: '🚶 자리 이탈', bg: 'rgba(107,114,128,0.85)' },
 };
+const EYE_READING_UI = { text: '👀 상태 판독 중', bg: 'rgba(37,99,235,0.82)' };
 const FACE_MISSING_UI = { text: '⚪ 얼굴 미감지', bg: 'rgba(55,65,81,0.82)' };
 
 // ── 얼굴/눈/입 랜드마크 인덱스 ───────────────
@@ -424,8 +426,8 @@ function setSignalTimer(id, sec, active) {
 }
 
 function updateSignalTimers() {
-  setSignalTimer('eye-closed-timer', eyeClosedAccumSec, eyeClosedElapsed >= EYE_HIDE_STATUS_SEC);
-  setSignalTimer('absent-timer', absentAccumSec, absentStartedAt !== null);
+  setSignalTimer('eye-closed-timer', eyeClosedAccumSec, eyeClosedElapsed >= WARNING_SEC);
+  setSignalTimer('absent-timer', absentAccumSec, currentState === STATES.ABSENT);
 }
 
 // ── 메인 감지 루프 ───────────────────────────
@@ -441,19 +443,19 @@ function onResults(results) {
     if (absentStartedAt === null) absentStartedAt = nowSec;
     const absentSec = nowSec - absentStartedAt;
     absenceCount += 1;
-    absentAccumSec += elapsedSec;
     eyeClosedElapsed = 0;
     eyeOpenElapsed = 0;
     stopSleepAlert();
-    updateSignalTimers();
 
     if (absentSec >= ABSENT_SEC && absenceCount >= ABSENCE_FRAMES) {
+      absentAccumSec += elapsedSec;
       currentState = STATES.ABSENT;
       setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
       updateBattery(false, false, false, true);
     } else {
       setPendingAbsentStatus();
     }
+    updateSignalTimers();
     return;
   }
 
@@ -534,12 +536,9 @@ function onResults(results) {
     Math.abs(yawAdj) < SCREEN_VIEW_YAW &&
     Math.abs(rollAdj) < SCREEN_VIEW_ROLL &&
     gaze <= GAZE_STRONG_THRESH;
-  const pitchDistractedNow = Math.abs(pitchAdj) > PITCH_THRESH && !noteTakingNow;
   const headDistractedNow =
     !startupGrace && !noteTakingNow && (
-      Math.abs(yawAdj) > YAW_THRESH ||
-      Math.abs(rollAdj) > ROLL_THRESH ||
-      pitchDistractedNow
+      Math.abs(yawAdj) > YAW_THRESH
     );
   const distractedNow =
     !noteTakingNow &&
@@ -550,14 +549,37 @@ function onResults(results) {
   const eyeAlert = eyeCount >= EYE_FRAMES;
   const yawnAlert = yawnElapsed >= YAWN_SEC;
   const headAlert = headCount >= HEAD_FRAMES;
+  
+  // -------------------------------------------------------------
+  let activeEarThresh = EAR_THRESH;
 
-  const eyeClosedNow = avgEAR < EAR_THRESH;
+  // 절대값이 아니라, 고개를 '아래로(양수)' 12도 이상 확실히 숙였을 때만 필기로 간주!
+  const isLookingDown = pitchAdj > 12; 
+
+  if (noteTakingNow || isLookingDown) {
+    // 필기 중일 때는 너무 과하게 낮추지 말고, 원래 기준의 70% 수준까지만 완화
+    activeEarThresh = EAR_THRESH * 0.7; 
+  } else {
+    // 정면을 볼 때는 안경을 썼어도 조는 걸 잘 잡도록 원래 기준치 그대로 사용!
+    activeEarThresh = EAR_THRESH;
+  }
+
+  // 보정된 기준값으로 눈 감김 여부를 최종 판단!
+  const eyeClosedNow = avgEAR < activeEarThresh;
+  const eyeReadingNow =
+    !eyeClosedNow &&
+    isLookingDown &&
+    avgEAR < (EAR_THRESH * EYE_UNCERTAIN_MARGIN);
+
   if (eyeClosedNow) {
     eyeClosedElapsed += elapsedSec;
-    if (eyeClosedElapsed >= EYE_HIDE_STATUS_SEC) {
+    if (eyeClosedElapsed >= WARNING_SEC) {
       eyeClosedAccumSec += elapsedSec;
     }
     eyeOpenElapsed = 0;
+  } else if (eyeReadingNow) {
+    eyeOpenElapsed = 0;
+    eyeClosedElapsed = 0;
   } else {
     eyeOpenElapsed += elapsedSec;
     eyeClosedElapsed = 0;
@@ -615,13 +637,15 @@ function onResults(results) {
   currentState = nextState;
 
   const wrap = document.getElementById('tile-me');
-  const shouldHideStatus =
-    currentState === STATES.FOCUSED &&
-    eyeClosedElapsed >= EYE_HIDE_STATUS_SEC &&
-    eyeClosedElapsed < WARNING_SEC;
+  const shouldShowReadingStatus =
+    (currentState === STATES.FOCUSED &&
+      eyeClosedElapsed >= EYE_HIDE_STATUS_SEC &&
+      eyeClosedElapsed < WARNING_SEC) ||
+    (currentState === STATES.FOCUSED && eyeReadingNow);
 
-  if (shouldHideStatus) {
-    hideStatusBadge();
+  if (shouldShowReadingStatus) {
+    showStatusBadge();
+    setStatus(EYE_READING_UI.text, EYE_READING_UI.bg);
   } else {
     showStatusBadge();
     setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
@@ -651,7 +675,7 @@ function setStatus(text, bg) {
 }
 
 // ── 실험용 시각화 유틸 ───────────────────────
-function drawBox(lm, idx, color, label) {
+function drawBox(lm, idx, color, label = '') {
   const w = canvasEl.width, h = canvasEl.height;
   const xs = idx.map(i => lm[i].x * w), ys = idx.map(i => lm[i].y * h);
   const x1 = Math.min(...xs) - 5, y1 = Math.min(...ys) - 5;
@@ -660,6 +684,7 @@ function drawBox(lm, idx, color, label) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.strokeRect(x1, y1, bw, bh);
+  if (!label) return;
   ctx.save();
   ctx.scale(-1, 1);
   ctx.fillStyle = color;
