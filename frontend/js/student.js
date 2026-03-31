@@ -67,6 +67,15 @@ const STATES = {
   DROWSY: 'drowsy',
   ABSENT: 'absent',
 };
+const DISPLAY_STATES = {
+  FOCUSED: 'FOCUSED',
+  DISTRACTED: 'DISTRACTED',
+  WARNING: 'WARNING',
+  DROWSY: 'DROWSY',
+  ABSENT: 'ABSENT',
+  READING: 'READING',
+  FACE_MISSING: 'FACE_MISSING',
+};
 
 const STATUS_UI = {
   [STATES.FOCUSED]: { text: '🟢 집중', bg: 'rgba(0,0,0,0.6)' },
@@ -103,6 +112,7 @@ let dailyCall = null;
 let ws = null;
 let captionViewerWs = null;
 let captionClearTimer = null;
+let studentCaptionEnabled = true;
 let sleepAlertInterval = null;
 let sleepAlertActive = false;
 
@@ -110,6 +120,7 @@ let eyeCount = 0, mouthCount = 0, headCount = 0, absenceCount = 0;
 let drowsyCnt = 0, yawnCnt = 0, headCnt2 = 0;
 let prevEyeAlert = false, prevYawnAlert = false, prevHeadAlert = false;
 let currentState = STATES.FOCUSED;
+let currentDisplayState = DISPLAY_STATES.FOCUSED;
 let eyeClosedElapsed = 0;
 let eyeOpenElapsed = 0;
 let eyeClosedAccumSec = 0;
@@ -144,6 +155,7 @@ window.dailyCall = null;
 function renderCaption(text, speaker = '강사') {
   const captionEl = document.getElementById('student-live-caption');
   if (!captionEl) return;
+  if (!studentCaptionEnabled) return;
   captionEl.textContent = `${speaker}: ${text}`;
   captionEl.classList.add('show');
   clearTimeout(captionClearTimer);
@@ -151,6 +163,20 @@ function renderCaption(text, speaker = '강사') {
     captionEl.classList.remove('show');
     captionEl.textContent = '';
   }, 5000);
+}
+
+function toggleStudentCaption() {
+  studentCaptionEnabled = !studentCaptionEnabled;
+  const btn = document.getElementById('student-caption-toggle');
+  const captionEl = document.getElementById('student-live-caption');
+  if (btn) {
+    btn.textContent = studentCaptionEnabled ? '자막 끄기' : '자막 켜기';
+    btn.classList.toggle('off', !studentCaptionEnabled);
+  }
+  if (!studentCaptionEnabled && captionEl) {
+    captionEl.classList.remove('show');
+    captionEl.textContent = '';
+  }
 }
 
 function connectCaptionViewer(roomCode = 'GLOBAL') {
@@ -382,6 +408,7 @@ function updateBattery(eyeAlert, yawnAlert, headAlert, absent) {
 
 function setPendingAbsentStatus() {
   showStatusBadge();
+  currentDisplayState = DISPLAY_STATES.FACE_MISSING;
   setStatus(FACE_MISSING_UI.text, FACE_MISSING_UI.bg);
 
   const fill = document.getElementById('battery-fill');
@@ -450,12 +477,17 @@ function onResults(results) {
     if (absentSec >= ABSENT_SEC && absenceCount >= ABSENCE_FRAMES) {
       absentAccumSec += elapsedSec;
       currentState = STATES.ABSENT;
+      currentDisplayState = DISPLAY_STATES.ABSENT;
       setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
       updateBattery(false, false, false, true);
     } else {
       setPendingAbsentStatus();
     }
     updateSignalTimers();
+    if (!onResults._t || Date.now() - onResults._t > 1000) {
+      sendDetectionData(currentState, 0, 0, drowsyCnt, yawnCnt, headCnt2);
+      onResults._t = Date.now();
+    }
     return;
   }
 
@@ -645,9 +677,11 @@ function onResults(results) {
 
   if (shouldShowReadingStatus) {
     showStatusBadge();
+    currentDisplayState = DISPLAY_STATES.READING;
     setStatus(EYE_READING_UI.text, EYE_READING_UI.bg);
   } else {
     showStatusBadge();
+    currentDisplayState = DISPLAY_STATES[currentState.toUpperCase()] || DISPLAY_STATES.FOCUSED;
     setStatus(STATUS_UI[currentState].text, STATUS_UI[currentState].bg);
   }
   if (currentState === STATES.DROWSY) wrap?.classList.add('drowsy-alert');
@@ -915,13 +949,7 @@ async function joinDailyRoom(userName, role) {
             if (f) f.style.display = 'none';
           }
         } else {
-          const pv = document.getElementById('peer-video-' + p.session_id);
-          const pf = document.getElementById('peer-fallback-' + p.session_id);
-          if (pv) {
-            pv.srcObject = new MediaStream([videoTrack]);
-            pv.style.display = 'block';
-            if (pf) pf.style.display = 'none';
-          }
+          setPeerTrack(p.session_id, videoTrack);
         }
       }
     });
@@ -965,13 +993,7 @@ function onTrackStarted(e) {
       console.log('강사 영상 연결됨');
     }
   } else {
-    const peerVideo = document.getElementById('peer-video-' + sid);
-    const peerFallback = document.getElementById('peer-fallback-' + sid);
-    if (peerVideo) {
-      peerVideo.srcObject = new MediaStream([e.track]);
-      peerVideo.style.display = 'block';
-      if (peerFallback) peerFallback.style.display = 'none';
-    }
+    setPeerTrack(sid, e.track);
   }
 }
 
@@ -987,90 +1009,152 @@ function attachInstructorVideo(participant) {
   }
 }
 
-const peerSlotMap = {};
+const PEER_PAGE_SIZE = 2;
+const peerParticipants = {};
+let peerOrder = [];
+let peerPage = 0;
 
-function addPeerTile(sid, name) {
-  if (peerSlotMap[sid]) return;
+function ensurePeerSlotVideo(slot, slotIndex) {
+  let video = document.getElementById(`peer-slot-video-${slotIndex}`);
+  if (!video) {
+    video = document.createElement('video');
+    video.id = `peer-slot-video-${slotIndex}`;
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.style.cssText = 'display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;';
+    slot.prepend(video);
+  }
+  return video;
+}
 
-  for (let i = 0; i < 2; i++) {
-    const slot = document.getElementById('peer-slot-' + i);
-    if (slot && !slot.dataset.sid) {
-      slot.dataset.sid = sid;
-      slot.classList.remove('tile-empty');
-      peerSlotMap[sid] = 'peer-slot-' + i;
+function setPeerSlotEmpty(slotIndex) {
+  const slot = document.getElementById(`peer-slot-${slotIndex}`);
+  if (!slot) return;
+  slot.dataset.sid = '';
+  slot.classList.add('tile-empty');
 
-      const video = document.createElement('video');
-      video.id = 'peer-video-' + sid;
-      video.autoplay = true;
-      video.muted = true;
-      video.playsInline = true;
-      video.style.cssText = 'display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;';
-      slot.prepend(video);
-
-      const fallback = document.getElementById('peer-slot-' + i + '-fallback');
-      if (fallback) {
-        fallback.innerHTML = `<div class="peer-avatar">${name.charAt(0)}</div>`;
-        fallback.id = 'peer-fallback-' + sid;
-      }
-
-      const label = document.getElementById('peer-slot-' + i + '-label');
-      if (label) {
-        label.textContent = name;
-        label.style.display = '';
-      }
-
-      const dot = document.createElement('div');
-      dot.className = 'peer-status-dot';
-      dot.style.background = '#22c55e';
-      slot.appendChild(dot);
-      return;
-    }
+  const video = document.getElementById(`peer-slot-video-${slotIndex}`);
+  if (video) {
+    video.srcObject = null;
+    video.style.display = 'none';
   }
 
-  const container = document.getElementById('peer-container');
-  if (!container || document.getElementById('peer-tile-' + sid)) return;
-  const tile = document.createElement('div');
-  tile.className = 'tile tile-peer';
-  tile.id = 'peer-tile-' + sid;
-  tile.onclick = () => swapToMain('peer-tile-' + sid);
-  tile.innerHTML = `
-    <video id="peer-video-${sid}" autoplay muted playsinline
-           style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; inset:0; border-radius:inherit;"></video>
-    <div class="tile-fallback peer-fallback" id="peer-fallback-${sid}">
-      <div class="peer-avatar">${name.charAt(0)}</div>
-    </div>
-    <div class="tile-label">${name}</div>
-    <div class="peer-status-dot" style="background:#22c55e;"></div>`;
-  container.appendChild(tile);
-  peerSlotMap[sid] = 'peer-tile-' + sid;
+  const fallback = document.getElementById(`peer-slot-${slotIndex}-fallback`);
+  if (fallback) {
+    fallback.style.display = 'flex';
+    fallback.innerHTML = `<div class="peer-waiting"><div class="peer-waiting-icon">👤</div><div class="peer-waiting-text">대기 중</div></div>`;
+  }
+
+  const label = document.getElementById(`peer-slot-${slotIndex}-label`);
+  if (label) {
+    label.textContent = '';
+    label.style.display = 'none';
+  }
+
+  let dot = slot.querySelector('.peer-status-dot');
+  if (!dot) {
+    dot = document.createElement('div');
+    dot.className = 'peer-status-dot';
+    slot.appendChild(dot);
+  }
+  dot.style.display = 'none';
+}
+
+function renderPeerSlot(slotIndex, peer) {
+  if (!peer) {
+    setPeerSlotEmpty(slotIndex);
+    return;
+  }
+
+  const slot = document.getElementById(`peer-slot-${slotIndex}`);
+  if (!slot) return;
+  slot.dataset.sid = peer.sid;
+  slot.classList.remove('tile-empty');
+
+  const video = ensurePeerSlotVideo(slot, slotIndex);
+  if (peer.track) {
+    video.srcObject = new MediaStream([peer.track]);
+    video.style.display = 'block';
+  } else {
+    video.srcObject = null;
+    video.style.display = 'none';
+  }
+
+  const fallback = document.getElementById(`peer-slot-${slotIndex}-fallback`);
+  if (fallback) {
+    fallback.style.display = peer.track ? 'none' : 'flex';
+    fallback.innerHTML = `<div class="peer-avatar">${(peer.name || '참여자').charAt(0)}</div>`;
+  }
+
+  const label = document.getElementById(`peer-slot-${slotIndex}-label`);
+  if (label) {
+    label.textContent = peer.name || '참여자';
+    label.style.display = '';
+  }
+
+  let dot = slot.querySelector('.peer-status-dot');
+  if (!dot) {
+    dot = document.createElement('div');
+    dot.className = 'peer-status-dot';
+    slot.appendChild(dot);
+  }
+  dot.style.display = 'block';
+  dot.style.background = '#22c55e';
+}
+
+function renderPeerPage() {
+  const peers = peerOrder.map(sid => peerParticipants[sid]).filter(Boolean);
+  const totalPages = Math.max(1, Math.ceil(peers.length / PEER_PAGE_SIZE));
+  if (peerPage >= totalPages) peerPage = totalPages - 1;
+  if (peerPage < 0) peerPage = 0;
+
+  const start = peerPage * PEER_PAGE_SIZE;
+  for (let i = 0; i < PEER_PAGE_SIZE; i++) {
+    renderPeerSlot(i, peers[start + i]);
+  }
+
+  const indicator = document.getElementById('peer-page-indicator');
+  if (indicator) indicator.textContent = `${peerPage + 1} / ${totalPages}`;
+  const prevBtn = document.getElementById('peer-prev-btn');
+  const nextBtn = document.getElementById('peer-next-btn');
+  if (prevBtn) prevBtn.disabled = peerPage === 0;
+  if (nextBtn) nextBtn.disabled = peerPage >= totalPages - 1;
+}
+
+function addPeerTile(sid, name) {
+  if (!peerParticipants[sid]) {
+    peerOrder.push(sid);
+    peerParticipants[sid] = { sid, name, track: null };
+  } else {
+    peerParticipants[sid].name = name;
+  }
+  renderPeerPage();
 }
 
 function removePeerTile(sid) {
-  const slotId = peerSlotMap[sid];
-  if (!slotId) return;
+  delete peerParticipants[sid];
+  peerOrder = peerOrder.filter(id => id !== sid);
+  renderPeerPage();
+}
 
-  if (slotId.startsWith('peer-slot-')) {
-    const slot = document.getElementById(slotId);
-    if (slot) {
-      slot.dataset.sid = '';
-      slot.classList.add('tile-empty');
-      document.getElementById('peer-video-' + sid)?.remove();
-      const fallback = document.getElementById('peer-fallback-' + sid);
-      if (fallback) {
-        fallback.id = slotId + '-fallback';
-        fallback.innerHTML = `<div class="peer-waiting"><div class="peer-waiting-icon">👤</div><div class="peer-waiting-text">대기 중</div></div>`;
-      }
-      const label = document.getElementById(slotId + '-label');
-      if (label) {
-        label.textContent = '';
-        label.style.display = 'none';
-      }
-      slot.querySelector('.peer-status-dot')?.remove();
-    }
-  } else {
-    document.getElementById(slotId)?.remove();
+function setPeerTrack(sid, track) {
+  if (!peerParticipants[sid]) {
+    peerOrder.push(sid);
+    peerParticipants[sid] = { sid, name: '참여자', track: null };
   }
-  delete peerSlotMap[sid];
+  peerParticipants[sid].track = track;
+  renderPeerPage();
+}
+
+function showPrevPeerPage() {
+  peerPage -= 1;
+  renderPeerPage();
+}
+
+function showNextPeerPage() {
+  peerPage += 1;
+  renderPeerPage();
 }
 // ── 학생 전용 WebSocket 메시지 ───────────────
 function connectWebSocket(studentId) {
@@ -1117,6 +1201,7 @@ function sendDetectionData(status, ear, mar, dc, yc, hc) {
     student_id: name,
     name,
     status,
+    display_status: currentDisplayState,
     ear: +ear.toFixed(2),
     mar: +mar.toFixed(2),
     drowsy_cnt: dc,
@@ -1240,6 +1325,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (avatarSm) avatarSm.textContent = userName.charAt(0);
   if (classEl && roomCode) classEl.textContent = '멋쟁이사자처럼 · ' + roomCode;
   updateSignalTimers();
+  renderPeerPage();
 
   connectWebSocket(userName);
   connectCaptionViewer(roomCode || 'GLOBAL');

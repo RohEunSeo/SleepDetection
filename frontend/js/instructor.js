@@ -11,10 +11,12 @@ const ROTATION_SIZE = 4;
 // ── 상태 색상 (student.js 와 동일 기준) ──────
 const STATE_UI = {
   FOCUSED:    { text: '집중',     border: '#22c55e', bg: 'rgba(34,197,94,0.15)'   },
-  DISTRACTED: { text: '주의산만', border: '#eab308', bg: 'rgba(234,179,8,0.15)'   },
+  DISTRACTED: { text: '시선이탈', border: '#eab308', bg: 'rgba(234,179,8,0.15)'   },
   WARNING:    { text: '졸음의심', border: '#f97316', bg: 'rgba(249,115,22,0.15)'  },
   DROWSY:     { text: '졸음확정', border: '#ef4444', bg: 'rgba(239,68,68,0.15)'   },
   ABSENT:     { text: '자리이탈', border: '#64748b', bg: 'rgba(100,116,139,0.15)' },
+  READING:    { text: '상태 판독 중', border: '#2563eb', bg: 'rgba(37,99,235,0.15)' },
+  FACE_MISSING: { text: '얼굴 미감지', border: '#6b7280', bg: 'rgba(55,65,81,0.18)' },
 };
 
 let stretchPopupShown = false;
@@ -39,7 +41,12 @@ let captionClearTimer = null;
 let captionRecognition = null;
 let captionRecognitionRunning = false;
 let lastCaptionSentText = '';
+let instructorCaptionEnabled = true;
 window.dailyCall = null;
+
+function getDisplayState(student) {
+  return student.display_status || student.status || 'FOCUSED';
+}
 
 const participantVideoMap = {};
 
@@ -51,6 +58,7 @@ function getWsBaseUrl() {
 function renderCaption(text, speaker = '강사', isFinal = true) {
   const captionEl = document.getElementById('inst-live-caption');
   if (!captionEl) return;
+  if (!instructorCaptionEnabled) return;
   captionEl.textContent = `${speaker}: ${text}`;
   captionEl.classList.add('show');
   captionEl.classList.toggle('interim', !isFinal);
@@ -59,6 +67,20 @@ function renderCaption(text, speaker = '강사', isFinal = true) {
     captionEl.classList.remove('show', 'interim');
     captionEl.textContent = '';
   }, 5000);
+}
+
+function toggleInstructorCaption() {
+  instructorCaptionEnabled = !instructorCaptionEnabled;
+  const btn = document.getElementById('inst-caption-toggle');
+  const captionEl = document.getElementById('inst-live-caption');
+  if (btn) {
+    btn.textContent = instructorCaptionEnabled ? '자막 끄기' : '자막 켜기';
+    btn.classList.toggle('off', !instructorCaptionEnabled);
+  }
+  if (!instructorCaptionEnabled && captionEl) {
+    captionEl.classList.remove('show', 'interim');
+    captionEl.textContent = '';
+  }
 }
 
 function getSpeechRecognitionCtor() {
@@ -180,10 +202,15 @@ function connectWS() {
       const msg = JSON.parse(e.data);
       if (msg.type === 'student_update') {
         if (msg.data.status) msg.data.status = msg.data.status.toUpperCase();
+        if (msg.data.display_status) msg.data.display_status = msg.data.display_status.toUpperCase();
         students[msg.data.student_id] = msg.data;
       } else if (msg.type === 'student_left') {
         delete students[msg.student_id];
       } else if (msg.type === 'full_state') {
+        Object.values(msg.data).forEach(s => {
+          if (s.status) s.status = s.status.toUpperCase();
+          if (s.display_status) s.display_status = s.display_status.toUpperCase();
+        });
         students = msg.data;
       }
       if (msg.type === 'chat') {
@@ -253,7 +280,7 @@ function renderStudentList() {
     return;
   }
   listEl.innerHTML = list.map(s => {
-    const st = STATE_UI[s.status] || STATE_UI.FOCUSED;
+    const st = STATE_UI[getDisplayState(s)] || STATE_UI.FOCUSED;
     return `
       <div style="
         display:flex; align-items:center; gap:8px;
@@ -286,7 +313,7 @@ function renderStudentGrid() {
 
   slice.forEach(s => {
     const sid     = s.student_id;
-    const st      = STATE_UI[s.status] || STATE_UI.FOCUSED;
+    const st      = STATE_UI[getDisplayState(s)] || STATE_UI.FOCUSED;
     const initial = (s.name || s.student_id || '?').charAt(0);
 
     let tile = document.getElementById(`tile-${sid}`);

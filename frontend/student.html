@@ -179,6 +179,7 @@
         </div>
         <div class="tile-label">🎓 강사</div>
         <!-- 자막 — tile-instructor 안에 있어야 강사 영상 위에 표시됨 -->
+        <button class="caption-toggle-btn" id="student-caption-toggle" onclick="toggleStudentCaption()">자막 끄기</button>
         <div id="student-live-caption" class="live-caption" aria-live="polite"></div>
       </div>
     </div>
@@ -216,6 +217,11 @@
       </div>
       <!-- 3명 초과 시 동적으로 추가되는 컨테이너 -->
       <div id="peer-container"></div>
+      <div class="peer-pagination">
+        <button class="peer-page-btn" id="peer-prev-btn" onclick="showPrevPeerPage()">이전</button>
+        <span class="peer-page-indicator" id="peer-page-indicator">1 / 1</span>
+        <button class="peer-page-btn" id="peer-next-btn" onclick="showNextPeerPage()">다음</button>
+      </div>
     </div>
   </div>
 
