@@ -75,6 +75,26 @@ function doLogout() {
 // key: "HH:00" → { totalFocus: number, count: number }
 let realtimeFocusMap = {};
 
+// ⑧⑨⑩ 누적 카운터 — WS 메시지마다 누적 (새로고침해도 유지)
+let _drowsyAccum = {};   // { student_id: count } 졸음 확정 누적
+let _absentAccum = {};   // { student_id: count } 자리 이탈 누적
+// ⑩ 비율 기반 집중도 카운터
+let _statusCount = {};   // { student_id: { focused:0, distracted:0, warning:0, drowsy:0, absent:0, total:0 } }
+
+function _calcLiveFocus(sid) {
+  // 상태 이벤트 비율 기반 집중도 (회복 없음)
+  const c = _statusCount[sid];
+  if (!c || c.total === 0) return 100;
+  const score = (
+    c.focused    * 100 +
+    c.distracted *  70 +
+    c.warning    *  40 +
+    c.drowsy     *  10 +
+    c.absent     *   0
+  ) / c.total;
+  return Math.round(score);
+}
+
 function _recordRealtimeFocus(studentData) {
   const now  = new Date();
   const hour = now.getHours();
@@ -93,6 +113,7 @@ function _recordRealtimeFocus(studentData) {
 
 // ── WS 연결 상태 ──────────────────────────
 let _wsConnected = false;
+let _renderThrottleTimer = null;
 
 function _updateWsIndicator(connected) {
   _wsConnected = connected;
@@ -105,6 +126,21 @@ function _updateWsIndicator(connected) {
     el.textContent = '🔴 연결 끊김 — 재연결 중...';
     el.style.color = '#ef4444';
   }
+}
+
+// ④ 업데이트중 인디케이터
+function _setUpdating() {
+  const el = document.getElementById('ws-status');
+  if (!el || !_wsConnected) return;
+  el.textContent = '🟡 업데이트 중...';
+  el.style.color = '#f59e0b';
+  clearTimeout(_renderThrottleTimer);
+  _renderThrottleTimer = setTimeout(() => {
+    if (_wsConnected) {
+      el.textContent = '🟢 실시간 연결됨';
+      el.style.color = '#10b981';
+    }
+  }, 2000);
 }
 
 function connectWS() {
@@ -124,9 +160,30 @@ function connectWS() {
         if (prev && msg.data.focus_pct !== undefined) {
           msg.data.focus_pct = Math.round(prev.focus_pct * 0.7 + msg.data.focus_pct * 0.3);
         }
+        // ⑧ 졸음 누적
+        if (msg.data.status === 'drowsy') {
+          if (!_drowsyAccum[sid]) _drowsyAccum[sid] = 0;
+          const prevStatus = wsStudents[sid]?.status;
+          if (prevStatus !== 'drowsy') _drowsyAccum[sid]++;
+        }
+        // ⑨ 이탈 누적
+        if (msg.data.status === 'absent') {
+          if (!_absentAccum[sid]) _absentAccum[sid] = 0;
+          const prevStatus2 = wsStudents[sid]?.status;
+          if (prevStatus2 !== 'absent') _absentAccum[sid]++;
+        }
+        // ⑩ 상태 비율 카운터
+        if (!_statusCount[sid]) _statusCount[sid] = { focused:0,distracted:0,warning:0,drowsy:0,absent:0,total:0 };
+        const st = msg.data.status || 'focused';
+        if (_statusCount[sid][st] !== undefined) _statusCount[sid][st]++;
+        _statusCount[sid].total++;
+        // 비율 기반 집중도로 덮어씀
+        msg.data.focus_pct = _calcLiveFocus(sid);
+
         wsStudents[sid] = msg.data;
         _recordRealtimeFocus(msg.data);
         // 대시보드 통계 즉시 갱신
+        _setUpdating();
         _updateDashboardStats();
         renderRealtimeMonitor();
         if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
@@ -146,21 +203,23 @@ function connectWS() {
   } catch(e) { console.warn('[Admin WS]', e); }
 }
 
-// 대시보드 실시간 통계 업데이트 (카드 그리드 + 상세뷰)
+// 대시보드 실시간 통계 업데이트
 function _updateDashboardStats() {
-  const arr    = Object.values(wsStudents);
-  const total  = arr.length;
-  const avg    = total ? Math.round(arr.reduce((a,s) => a + (s.focus_pct||0), 0) / total) : 0;
-  const drowsy = arr.filter(s => s.status === 'drowsy').length;
-  const absent = arr.filter(s => s.status === 'absent').length;
-  // 과정 목록 카드 갱신
+  const arr   = Object.values(wsStudents);
+  const total = arr.length;
+  // ⑦ 집중도: 비율 기반 평균
+  const avg   = total ? Math.round(arr.reduce((a,s) => a + (s.focus_pct||0), 0) / total) : 0;
+  // ⑧ 졸음: 누적 카운터 합계
+  const drowsyTotal = Object.values(_drowsyAccum).reduce((a,b)=>a+b, 0);
+  // ⑨ 이탈: 건수로 표시
+  const absentTotal = Object.values(_absentAccum).reduce((a,b)=>a+b, 0);
+
   renderCourseGrid();
-  // 상세 뷰가 열려있으면 숫자 갱신
   if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
     document.getElementById('d-students').textContent = `${total}명`;
     document.getElementById('d-focus').textContent    = `${avg}%`;
-    if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${drowsy}건`;
-    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = total > 0 ? `${Math.round(absent/total*100)}%` : '0%';
+    if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${drowsyTotal}건`;
+    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = `${absentTotal}건`;  // ⑨ 이탈 건수
   }
 }
 
@@ -316,8 +375,10 @@ async function deleteSession(sessionId) {
       try {
         const res = await fetch(`${BACKEND_URL}/api/sessions/${sessionId}`, { method: 'DELETE' });
         if (res.ok) {
+          // ① activeSessions 배열에서도 즉시 제거 → 카드 바로 사라짐
+          activeSessions = activeSessions.filter(s => s.session_id !== sessionId);
+          renderCourseGrid();
           if (typeof showToast === 'function') showToast('수업 기록이 삭제됐음');
-          pollActiveSessions();
         }
       } catch(e) { console.warn('삭제 실패:', e); }
     }
@@ -362,6 +423,11 @@ function enterCourse(roomCode, courseName, isLive) {
   const realIsLive = !isFuture && !isPast && isLive;
 
   updateStatusBadge(realIsLive);
+
+  // ⑤ LIVE 중 상단 결과 배지(전원출석완료 등) 숨기기
+  // 수업 종료 후에만 의미있는 배지이므로 LIVE 중엔 숨김
+  const resultBadges = document.querySelectorAll('.result-badge-area');
+  resultBadges.forEach(b => { b.style.display = realIsLive ? 'none' : ''; });
 
   // 모니터링 카드 제목 동적 변경
   const titleEl    = document.getElementById('monitor-title-text');
@@ -409,7 +475,7 @@ function enterCourse(roomCode, courseName, isLive) {
     document.getElementById('d-students').textContent = `${sc}명`;
     document.getElementById('d-focus').textContent    = `${af}%`;
     if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${dc}건`;
-    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = sc > 0 ? `${Math.round(ac/sc*100)}%` : '0%';
+    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = `${ac}건`;  // ⑨ 이탈 건수
     // 학생 카드 표시: wsStudents 있으면 바로 표시, 없으면 API 조회
     if (Object.keys(wsStudents).length > 0) {
       renderRealtimeMonitor(false);
@@ -562,7 +628,12 @@ function showStudentReport(student) {
   document.getElementById('view-student-report')?.classList.add('active');
 
   const nameEl = document.getElementById('sr-student-name');
-  if (nameEl) nameEl.textContent = `${student.name || student.student_id} 학생 개별 리포트`;
+  if (nameEl) {
+    // ⑯ 날짜 표시: "노은서 학생 개별 리포트 · 3/31"
+    const now = new Date();
+    const dateLabel = `${now.getMonth()+1}/${now.getDate()}`;
+    nameEl.textContent = `${student.name || student.student_id} 학생 개별 리포트 · ${dateLabel}`;
+  }
 
   const badgeEl = document.getElementById('sr-student-badge');
   if (badgeEl) {
@@ -754,7 +825,7 @@ function renderStudentReportBody(student) {
               ['🚶 자리 이탈',   '#f97316', absent,     '화면 미감지'],
               ['😪 눈 감김 의심','#eab308', warning,    'EAR↓ 기준'],
               ['🥱 하품',        '#f59e0b', yawn,       'MAR↑ 기준'],
-              ['🤔 고개 떨굼',   '#8b5cf6', head,       'Pitch/Yaw 이탈'],
+              // ⑳ 고개 떨굼 삭제 — 수업 종료 후 별도 확인 권장
               ['👀 시선 이탈',   '#6366f1', distracted, 'Gaze score 이탈'],
               ['🫥 얼굴 미감지', '#9ca3af', noFace,     '카메라 미인식'],
             ].map(([label, color, val, desc]) => `
@@ -1286,6 +1357,12 @@ function _makeMonitorCard(s, isLive) {
 // ── 누적 추이 탭 렌더링 ───────────────────────
 let _srTrendPeriod = '1w'; // 기간 상태: 1w/1m/3m/all
 
+// ⑰ 누적 추이 기간 변경 함수 (버튼 안 눌리는 버그 수정)
+function _setSrTrendPeriod(period) {
+  window._srTrendPeriod = period;
+  if (_currentReportStudent) renderSrTrend(_currentReportStudent);
+}
+
 function renderSrTrend(student) {
   const el = document.getElementById('sr-body-trend');
   if (!el) return;
@@ -1379,7 +1456,7 @@ function renderSrTrend(student) {
     <!-- 기간 선택 탭 -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       ${[['1w','최근 1주일'],['1m','최근 1개월'],['3m','최근 3개월'],['all','전체 과정']].map(([key,label])=>`
-      <button onclick="window._srTrendPeriod='${key}';renderSrTrend(_currentReportStudent);"
+      <button type="button" onclick="_setSrTrendPeriod('${key}');"
         style="padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.15s;
                ${_srTrendPeriod===key ? 'background:#FF7710;color:#fff;border:none;' : 'background:#fff;color:#6b7280;border:1px solid #e5e7eb;'}">
         ${label}
@@ -1639,7 +1716,8 @@ function openStudentPdfDaily() {
         <tbody>
           ${[['😴 졸음 확정','#ef4444',drowsy,'PERCLOS 기준'],['🚶 자리 이탈','#f97316',absent,'화면 미감지'],
              ['😪 눈 감김 의심','#eab308',warning,'EAR↓ 기준'],['🥱 하품','#f59e0b',yawn,'MAR↑ 기준'],
-             ['🤔 고개 떨굼','#8b5cf6',head,'Pitch/Yaw 이탈'],['👀 시선 이탈','#6366f1',distracted,'Gaze score 이탈'],
+             // ⑳ 고개 떨굼 삭제
+             ['👀 시선 이탈','#6366f1',distracted,'Gaze score 이탈'],
              ['🫥 얼굴 미감지','#9ca3af',noFace,'카메라 미인식']
           ].map(([l,c,v,d])=>`<tr>
             <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;">${l}</td>

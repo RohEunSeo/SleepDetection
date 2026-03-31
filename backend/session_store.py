@@ -4,7 +4,7 @@
 # =============================================
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import csv
 import io
 import os
@@ -16,6 +16,17 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def _local_now() -> datetime:
+    """서버 로컬 시간 기준 현재 시각 (tzinfo 없음)"""
+    return datetime.now()
+
+
+def _local_date_str() -> str:
+    """오늘 날짜를 로컬 시간 기준 YYYY-MM-DD로 반환 (UTC 변환 방지)"""
+    now = datetime.now()
+    return f"{now.year}-{now.month:02d}-{now.day:02d}"
 
 
 @dataclass
@@ -40,7 +51,7 @@ class Session:
     room_code:    str
     course_name:  str
     instructor:   str
-    started_at:   datetime = field(default_factory=datetime.now)
+    started_at:   datetime = field(default_factory=_local_now)
     ended_at:     datetime | None = None
     events:       list[DetectionEvent] = field(default_factory=list)
 
@@ -48,35 +59,63 @@ class Session:
         return self.ended_at is None
 
     def end(self):
-        self.ended_at = datetime.now()
+        self.ended_at = _local_now()
 
     def add_event(self, event: DetectionEvent):
         self.events.append(event)
 
     def summary(self) -> dict:
+        # ── 학생별 집계 ──────────────────────────────
+        # drowsy_cnt / yawn_cnt / head_cnt 는 student.js에서
+        # 누적값으로 전송됨 → 각 학생의 마지막 최대값만 사용 (중복 합산 방지)
         students = {}
         for e in self.events:
-            if e.student_id not in students:
-                students[e.student_id] = {
-                    "name": e.name, "drowsy": 0, "yawn": 0,
-                    "head": 0, "absent": 0, "distracted": 0,
-                    "warning": 0, "focus_pct": 100,
+            sid = e.student_id
+            if sid not in students:
+                students[sid] = {
+                    "name":           e.name,
+                    "drowsy":         0,   # 상태 전환 횟수
+                    "yawn":           0,   # 최대 하품 카운트
+                    "head":           0,   # 최대 고개 카운트
+                    "absent":         0,   # 상태 전환 횟수
+                    "distracted":     0,
+                    "warning":        0,
+                    "max_drowsy_cnt": 0,   # 누적값 최대치 추적용
+                    "max_yawn_cnt":   0,
+                    "max_head_cnt":   0,
+                    "prev_status":    None,
                 }
-            s = students[e.student_id]
-            if e.status == "drowsy":     s["drowsy"]     += 1
-            if e.status == "absent":     s["absent"]     += 1
-            if e.status == "distracted": s["distracted"] += 1
-            if e.status == "warning":    s["warning"]    += 1
-            if e.yawn_cnt > 0:           s["yawn"]       += 1
-            if e.head_cnt > 0:           s["head"]       += 1
+            s = students[sid]
 
+            # 상태 전환 횟수 기반 카운트 (현재 → 이전과 다를 때만)
+            if e.status != s["prev_status"]:
+                if e.status == "drowsy":     s["drowsy"]     += 1
+                if e.status == "absent":     s["absent"]     += 1
+                if e.status == "distracted": s["distracted"] += 1
+                if e.status == "warning":    s["warning"]    += 1
+            s["prev_status"] = e.status
+
+            # 누적값은 최대치로만 갱신 (중복 합산 방지)
+            if e.yawn_cnt   > s["max_yawn_cnt"]:
+                s["yawn"]       = e.yawn_cnt
+                s["max_yawn_cnt"] = e.yawn_cnt
+            if e.head_cnt   > s["max_head_cnt"]:
+                s["head"]       = e.head_cnt
+                s["max_head_cnt"] = e.head_cnt
+
+        # 내부 추적용 키 제거
+        for s in students.values():
+            for k in ["max_drowsy_cnt", "max_yawn_cnt", "max_head_cnt", "prev_status"]:
+                s.pop(k, None)
+
+        # 집중도 계산 (감점 방식)
         for s in students.values():
             penalty = (s["drowsy"]*10 + s["absent"]*15 +
-                       s["warning"]*5 + s["yawn"]*3 + s["head"]*3)
+                       s["warning"]*5  + s["yawn"]*3 + s["head"]*3)
             s["focus_pct"] = max(0, 100 - penalty)
 
         total     = len(students)
-        duration  = (self.ended_at or datetime.now()) - self.started_at.replace(tzinfo=None)
+        duration  = (_local_now() if self.ended_at is None else self.ended_at) - self.started_at
         avg_focus = round(
             sum(s["focus_pct"] for s in students.values()) / total
         ) if total > 0 else 0
@@ -127,26 +166,30 @@ class SessionStore:
         self._sessions: dict[str, Session] = {}
 
     def create(self, room_code: str, instructor: str, course_name: str = "") -> Session:
-        session_id = f"{room_code}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        now = _local_now()
+        session_id = f"{room_code}-{now.strftime('%Y%m%d%H%M%S')}"
         session = Session(
             session_id  = session_id,
             room_code   = room_code,
             course_name = course_name,
             instructor  = instructor,
+            started_at  = now,
         )
         self._sessions[session_id] = session
 
         try:
+            # ⑮ 날짜 버그 수정: 로컬 날짜 문자열 명시적 사용 (UTC 변환 방지)
+            local_date = f"{now.year}-{now.month:02d}-{now.day:02d}"
             supabase.table("sessions").insert({
                 "session_id":  session_id,
                 "room_code":   room_code,
                 "course_name": course_name,
                 "instructor":  instructor,
-                "date":        session.started_at.strftime("%Y-%m-%d"),
-                "started_at":  session.started_at.isoformat(),
+                "date":        local_date,
+                "started_at":  now.strftime("%Y-%m-%dT%H:%M:%S"),
                 "is_active":   True,
             }).execute()
-            print(f"[Supabase] 세션 생성 완료: {session_id} / 과정: {course_name}")
+            print(f"[Supabase] 세션 생성 완료: {session_id} / 과정: {course_name} / 날짜: {local_date}")
         except Exception as e:
             print(f"[Supabase] 세션 생성 실패: {e}")
 
@@ -156,7 +199,6 @@ class SessionStore:
         if session_id in self._sessions:
             return self._sessions[session_id]
         try:
-            # .single() 제거 → 0 rows 에러 방지
             res = supabase.table("sessions").select("*").eq("session_id", session_id).execute()
             if res.data and len(res.data) > 0:
                 return self._row_to_session(res.data[0])
@@ -165,11 +207,9 @@ class SessionStore:
         return None
 
     def get_active(self, room_code: str) -> Session | None:
-        # 1. 메모리 캐시 우선
         for s in self._sessions.values():
             if s.room_code == room_code and s.is_active():
                 return s
-        # 2. 없으면 Supabase에서 복원 (서버 재시작 후에도 동작)
         try:
             res = supabase.table("sessions").select("*") \
                 .eq("room_code", room_code) \
@@ -244,8 +284,9 @@ class SessionStore:
             summary = session.summary()
 
             try:
+                now = _local_now()
                 supabase.table("sessions").update({
-                    "ended_at":         session.ended_at.isoformat(),
+                    "ended_at":         now.strftime("%Y-%m-%dT%H:%M:%S"),
                     "duration_min":     summary["duration_min"],
                     "student_count":    summary["student_count"],
                     "avg_focus":        summary["avg_focus"],
@@ -288,11 +329,11 @@ class SessionStore:
             self._sessions.pop(session.session_id, None)
 
         else:
-            # 메모리에 없는 경우 → Supabase에서 room_code로 직접 종료
             print(f"[Supabase] 메모리 세션 없음, DB 직접 종료: {room_code}")
             try:
+                now = _local_now()
                 supabase.table("sessions").update({
-                    "ended_at":  datetime.now().isoformat(),
+                    "ended_at":  now.strftime("%Y-%m-%dT%H:%M:%S"),
                     "is_active": False,
                 }).eq("room_code", room_code).eq("is_active", True).execute()
                 print(f"[Supabase] DB 직접 종료 완료: {room_code}")
