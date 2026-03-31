@@ -23,14 +23,16 @@ async def list_courses():
 @router.post("/session/end")
 async def end_session(room_code: str):
     """
-    수업 종료 — 활성 세션 마감
+    수업 종료 — 활성 세션 마감 + Supabase 저장
     POST /api/session/end?room_code=LION-2025
     """
     session = store.get_active(room_code)
     if not session:
         raise HTTPException(status_code=404, detail="진행 중인 세션 없음")
-    session.end()
-    return {"session_id": session.session_id, "summary": session.summary()}
+    summary = session.summary()
+    # store.end_session() 호출 → Supabase student_events 저장 + sessions 업데이트
+    store.end_session(room_code)
+    return {"status": "ended", "room_code": room_code, "summary": summary}
 
 
 # ★ /sessions/active 가 /sessions/{session_id} 보다 반드시 위에 있어야 함

@@ -34,202 +34,10 @@ let selectedCourse  = '';
 let currentSessions = [];
 let selectedSession = null;
 
-// ══════════════════════════════════════════════
-// ── 데모 모드 (화면녹화용) ───────────────────
-// ══════════════════════════════════════════════
-const DEMO_MODE = false; // 데모 끝나면 false로
-let _demoTimers    = [];
-let _demoIntervals = [];
-
-// 25명 학생 더미
-const DEMO_STUDENTS = [
-  '강민서','김도윤','나지훈','노은서','류수아',
-  '문재원','박세은','백준호','송하린','신예원',
-  '엄태양','오지민','윤도현','이서진','이채현',
-  '임재혁','장민준','정소연','조하은','주태양',
-  '최유진','한지수','허승아','홍민재','황도윤',
-].map((name, i) => ({
-  student_id: `demo_${String(i+1).padStart(3,'0')}`,
-  name,
-  status:        'focused',
-  focus_pct:     Math.floor(Math.random()*15)+80,
-  drowsy_cnt:    0, absent_cnt:    0, warning_cnt:   0,
-  yawn_cnt:      0, head_cnt:      0, distracted_cnt:0, no_face_cnt:0,
-}));
-
-// 데모 차트 시나리오: 초반↑ → 점심 후 하락↓ → 후반 약간 회복
-const DEMO_CHART_SLOTS = [
-  { time:'09:00', focus:88, sleep:2  },
-  { time:'10:00', focus:92, sleep:1  },
-  { time:'11:00', focus:85, sleep:4  },
-  { time:'13:00', focus:71, sleep:11 },
-  { time:'14:00', focus:76, sleep:8  },
-  { time:'15:00', focus:73, sleep:9  },
-  { time:'16:00', focus:79, sleep:6  },
-  { time:'17:00', focus:75, sleep:8  },
-];
-
-let _demoChartIdx     = 0;
-let _demoStudentMap   = {};
-let _demoLive         = false;
-let _demoEnded        = false;
-let _demoStatSnapshot = {};
-
-DEMO_STUDENTS.forEach(s => { _demoStudentMap[s.student_id] = { ...s }; });
-
-/** 데모 시작: 수업 목록에서 수업전 → 4초 LIVE → 20초 수업 → 24초 종료 */
-function startDemoMode() {
-  if (!DEMO_MODE) return;
-  _demoSetCourseCard('pre');
-
-  // 4초: LIVE 전환 + 대시보드 자동 진입
-  _demoTimers.push(setTimeout(() => {
-    _demoLive  = true;
-    _demoEnded = false;
-    _demoSetCourseCard('live');
-
-    // 수업 목록 페이지에 있으면 대시보드로 자동 진입
-    if (document.getElementById('view-dashboard-list')?.classList.contains('active') && activeSessions.length) {
-      const s = activeSessions[0];
-      enterCourse(s.room_code, s.course_name || s.room_code, true);
-      return; // enterCourse 안에서 _demoBoot 재호출 방지용 — _demoLive 이미 true
-    }
-    if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
-      _demoRefreshDetail();
-    }
-    _demoIntervals.push(setInterval(_demoTickStudents, 2000));
-    _demoIntervals.push(setInterval(_demoTickChart, 2200));
-  }, 4000));
-
-  // 24초: 수업 종료
-  _demoTimers.push(setTimeout(() => {
-    _demoLive  = false;
-    _demoEnded = true;
-    _demoIntervals.forEach(clearInterval);
-    _demoIntervals = [];
-    // 종료 시 차트 전체 슬롯 한 번에 채움 (09~17시 완성)
-    DEMO_CHART_SLOTS.forEach(slot => {
-      realtimeFocusMap[slot.time] = { totalFocus: slot.focus, count: 1, drowsyCount: slot.sleep };
-    });
-    _demoStatSnapshot = {};
-    Object.values(_demoStudentMap).forEach(s => { _demoStatSnapshot[s.student_id] = { ...s }; });
-    _demoSetCourseCard('ended');
-    if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
-      _demoRefreshDetail();
-    }
-  }, 24000));
-}
-
-function _demoSetCourseCard(state) {
-  if (!activeSessions.length) return;
-  activeSessions[0]._demoState = state;
-  renderCourseGrid();
-}
-
-/** 2초마다 학생 상태 랜덤 변화 (집중 최소 15명 보장, 졸음확정 최대 4명) */
-function _demoTickStudents() {
-  const all     = Object.values(_demoStudentMap);
-  const shuffle = [...all].sort(() => Math.random() - 0.5);
-  let drowsyCnt = 0;
-
-  shuffle.forEach((s, i) => {
-    if (i < 15) {
-      // 상위 15명은 무조건 집중
-      s.status    = 'focused';
-      s.focus_pct = Math.floor(Math.random()*20)+76;
-    } else {
-      // 나머지 10명: 랜덤 상태
-      const roll = Math.random();
-      let st;
-      if      (roll < 0.30) st = 'focused';
-      else if (roll < 0.50) st = 'distracted';
-      else if (roll < 0.65) st = 'warning';
-      else if (roll < 0.80) st = 'drowsy';
-      else if (roll < 0.90) st = 'absent';
-      else                  st = 'warning';
-
-      if (st === 'drowsy' && drowsyCnt >= 4) st = 'warning';
-      if (st === 'drowsy') drowsyCnt++;
-
-      s.status    = st;
-      const fm    = { focused:85, distracted:60, warning:44, drowsy:24, absent:0 };
-      s.focus_pct = Math.max(0, Math.min(100, Math.floor((fm[st]||70) + (Math.random()*16-8))));
-      if (st === 'drowsy')     { s.drowsy_cnt++;     s.warning_cnt++; }
-      if (st === 'warning')    s.warning_cnt++;
-      if (st === 'absent')     s.absent_cnt++;
-      if (st === 'distracted') s.distracted_cnt++;
-    }
-    _demoStudentMap[s.student_id] = s;
-  });
-
-  wsStudents = { ..._demoStudentMap };
-
-  if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
-    const arr = Object.values(wsStudents);
-    const avg = Math.round(arr.reduce((a,s)=>a+(s.focus_pct||0),0)/arr.length);
-    const dr  = arr.filter(s=>s.status==='drowsy').length;
-    const ab  = arr.filter(s=>s.status==='absent').length;
-    document.getElementById('d-students').textContent = `${arr.length}명`;
-    document.getElementById('d-focus').textContent    = `${avg}%`;
-    if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${dr}건`;
-    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = `${Math.round(ab/arr.length*100)}%`;
-    renderRealtimeMonitor(true);
-    drawFocusChart();
-  }
-}
-
-/** 2.2초마다 차트 포인트 추가 */
-function _demoTickChart() {
-  if (_demoChartIdx >= DEMO_CHART_SLOTS.length) return;
-  const slot = DEMO_CHART_SLOTS[_demoChartIdx];
-  realtimeFocusMap[slot.time] = { totalFocus: slot.focus, count: 1, drowsyCount: slot.sleep };
-  _demoChartIdx++;
-  if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) drawFocusChart();
-}
-
-/** 대시보드 상세 LIVE/종료 UI 갱신 */
-function _demoRefreshDetail() {
-  const titleEl = document.getElementById('monitor-title-text');
-  const subEl   = document.getElementById('monitor-card-subtitle');
-  const dotEl   = document.getElementById('monitor-live-dot');
-  const badge   = document.getElementById('detail-status-badge');
-
-  if (_demoLive) {
-    if (titleEl) titleEl.textContent = '실시간 학생 모니터링';
-    if (subEl)   subEl.textContent   = '상태별 그룹 — 강사 실시간 모니터링 뷰';
-    if (dotEl)   { dotEl.style.display='inline-block'; dotEl.style.background='#ef4444'; dotEl.style.animation=''; }
-    if (badge)   { badge.style.cssText='display:flex;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;'; badge.innerHTML='<span style="width:6px;height:6px;border-radius:50%;background:#ef4444;animation:pulse 1.5s infinite;display:inline-block;"></span> 수업중'; }
-    wsStudents = { ..._demoStudentMap };
-    renderRealtimeMonitor(true);
-    // 학생 상태 + 차트 인터벌 시작 (중복 방지)
-    if (!_demoIntervals.length) {
-      _demoIntervals.push(setInterval(_demoTickStudents, 2000));
-      _demoIntervals.push(setInterval(_demoTickChart, 2200));
-    }
-  } else if (_demoEnded) {
-    if (titleEl) titleEl.textContent = '당일 학생 수업 태도';
-    if (subEl)   subEl.textContent   = '집중도 낮은 순 정렬 — 수업 결과 요약';
-    if (dotEl)   { dotEl.style.display='inline-block'; dotEl.style.background='#9ca3af'; dotEl.style.animation='none'; }
-    if (badge)   { badge.style.cssText='display:flex;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;'; badge.innerHTML='수업종료'; }
-    wsStudents = { ..._demoStatSnapshot };
-    const arr  = Object.values(wsStudents);
-    const avgF = arr.length ? Math.round(arr.reduce((a,s)=>a+(s.focus_pct||0),0)/arr.length) : 0;
-    document.getElementById('d-students').textContent = `${arr.length}명`;
-    document.getElementById('d-focus').textContent    = `${avgF}%`;
-    if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${arr.filter(s=>s.status==='drowsy').length}건`;
-    const ab = arr.filter(s=>s.status==='absent').length;
-    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = arr.length>0 ? `${Math.round(ab/arr.length*100)}%` : '0%';
-    renderRealtimeMonitor(false);
-    drawFocusChart();
-  }
-}
-
-function _demoBoot() {
-  if (!DEMO_MODE) return;
-  if (_demoTimers.length) return; // 이미 실행 중
-  startDemoMode();
-}
-// ══════════════════════════════════════════════
+// ── 더미 데이터 플래그 ────────────────────
+// 누적 추이 / 종합 리포트 / 위험군은 장기 데이터 필요
+// 실제 베타 테스트로 데이터 쌓이면 false로 변경
+const USE_DUMMY_TREND = true;
 
 // ── 유틸 ─────────────────────────────────
 function focusColor(pct) {
@@ -283,34 +91,77 @@ function _recordRealtimeFocus(studentData) {
   realtimeFocusMap[key].count += 1;
 }
 
+// ── WS 연결 상태 ──────────────────────────
+let _wsConnected = false;
+
+function _updateWsIndicator(connected) {
+  _wsConnected = connected;
+  const el = document.getElementById('ws-status');
+  if (!el) return;
+  if (connected) {
+    el.textContent = '🟢 실시간 연결됨';
+    el.style.color = '#10b981';
+  } else {
+    el.textContent = '🔴 연결 끊김 — 재연결 중...';
+    el.style.color = '#ef4444';
+  }
+}
+
 function connectWS() {
   try {
     ws = new WebSocket(`${getWsBaseUrl()}/ws/admin`);
-    ws.onopen    = () => console.log('[Admin WS] 연결됨');
+    ws.onopen = () => {
+      console.log('[Admin WS] 연결됨');
+      _updateWsIndicator(true);
+    };
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       if (msg.type === 'student_update') {
         if (msg.data?.status) msg.data.status = msg.data.status.toLowerCase();
-        wsStudents[msg.data.student_id] = msg.data;
-        // 실시간 집중도 누적 기록
+        const sid  = msg.data.student_id;
+        const prev = wsStudents[sid];
+        // 집중도 지수이동평균 (EMA α=0.3) — 배터리 급변 방지
+        if (prev && msg.data.focus_pct !== undefined) {
+          msg.data.focus_pct = Math.round(prev.focus_pct * 0.7 + msg.data.focus_pct * 0.3);
+        }
+        wsStudents[sid] = msg.data;
         _recordRealtimeFocus(msg.data);
-        renderStudentAttitude();
-        renderCourseGrid();
-        // 실시간 모니터링 보드 업데이트
+        // 대시보드 통계 즉시 갱신
+        _updateDashboardStats();
         renderRealtimeMonitor();
-        // 대시보드 상세 뷰가 활성화된 경우 차트 즉시 갱신
         if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
           drawFocusChart();
         }
       } else if (msg.type === 'student_left') {
         delete wsStudents[msg.student_id];
-        renderStudentAttitude();
-        renderCourseGrid();
+        _updateDashboardStats();
         renderRealtimeMonitor();
       }
     };
-    ws.onclose = () => setTimeout(connectWS, 3000);
+    ws.onclose = () => {
+      _updateWsIndicator(false);
+      setTimeout(connectWS, 3000);
+    };
+    ws.onerror = () => _updateWsIndicator(false);
   } catch(e) { console.warn('[Admin WS]', e); }
+}
+
+// 대시보드 실시간 통계 업데이트 (카드 그리드 + 상세뷰)
+function _updateDashboardStats() {
+  const arr    = Object.values(wsStudents);
+  const total  = arr.length;
+  const avg    = total ? Math.round(arr.reduce((a,s) => a + (s.focus_pct||0), 0) / total) : 0;
+  const drowsy = arr.filter(s => s.status === 'drowsy').length;
+  const absent = arr.filter(s => s.status === 'absent').length;
+  // 과정 목록 카드 갱신
+  renderCourseGrid();
+  // 상세 뷰가 열려있으면 숫자 갱신
+  if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
+    document.getElementById('d-students').textContent = `${total}명`;
+    document.getElementById('d-focus').textContent    = `${avg}%`;
+    if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${drowsy}건`;
+    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = total > 0 ? `${Math.round(absent/total*100)}%` : '0%';
+  }
 }
 
 // ── 진행 중 세션 폴링 ─────────────────────
@@ -357,27 +208,28 @@ function renderCourseGrid() {
       </div>`;
     return;
   }
-  const nowD    = new Date();
-  const todayS  = `${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
+  const nowD   = new Date();
+  const todayS = `${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,'0')}-${String(nowD.getDate()).padStart(2,'0')}`;
 
-  grid.innerHTML = activeSessions.map((s) => {
+  // 과정명 기준 중복 제거 — 같은 과정명이면 최신 세션 하나만 표시
+  const courseMap = {};
+  activeSessions.forEach(s => {
+    const key = s.course_name || s.room_code;
+    if (!courseMap[key] || (s.date||'') >= (courseMap[key].date||'')) {
+      courseMap[key] = s;
+    }
+  });
+  const sessions = Object.values(courseMap);
+
+  grid.innerHTML = sessions.map((s) => {
     const apiIsLive = s.is_active === true || s.is_active === 'true' || s.is_active === 'True';
     const sessDate  = s.date || '';
     const isFuture  = sessDate !== '' && sessDate > todayS;
     const isPast    = sessDate !== '' && sessDate < todayS;
     const isLive    = !isFuture && !isPast && apiIsLive;
 
-    // 데모 모드: _demoState 우선 적용
     let badgeHtml;
-    if (DEMO_MODE && s._demoState) {
-      if (s._demoState === 'live') {
-        badgeHtml = `<span class="live-badge"><span class="live-dot"></span>LIVE</span>`;
-      } else if (s._demoState === 'pre') {
-        badgeHtml = `<span style="padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;">수업전</span>`;
-      } else {
-        badgeHtml = `<span class="ended-badge">수업종료</span>`;
-      }
-    } else if (isLive) {
+    if (isLive) {
       badgeHtml = `<span class="live-badge"><span class="live-dot"></span>LIVE</span>`;
     } else if (isFuture) {
       badgeHtml = `<span style="padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;">수업전</span>`;
@@ -385,37 +237,23 @@ function renderCourseGrid() {
       badgeHtml = `<span class="ended-badge">수업종료</span>`;
     }
 
-    // 데모 통계
     let students, focus, drowsyCnt, absentRate;
-    if (DEMO_MODE && s._demoState === 'live') {
-      const arr    = Object.values(wsStudents);
-      students   = arr.length || 30;
-      focus      = arr.length ? Math.round(arr.reduce((a,x)=>a+(x.focus_pct||0),0)/arr.length) : 0;
-      drowsyCnt  = arr.filter(x=>x.status==='drowsy').length;
-      const abN  = arr.filter(x=>x.status==='absent').length;
-      absentRate = students > 0 ? Math.round(abN/students*100) : 0;
-    } else if (DEMO_MODE && s._demoState === 'ended') {
-      const snap   = Object.values(_demoStatSnapshot);
-      students   = snap.length || 30;
-      focus      = snap.length ? Math.round(snap.reduce((a,x)=>a+(x.focus_pct||0),0)/snap.length) : 0;
-      drowsyCnt  = snap.filter(x=>x.status==='drowsy').length;
-      const abN  = snap.filter(x=>x.status==='absent').length;
-      absentRate = students > 0 ? Math.round(abN/students*100) : 0;
-    } else if (DEMO_MODE && s._demoState === 'pre') {
-      students = 0; focus = 0; drowsyCnt = 0; absentRate = 0;
-    } else if (isLive) {
+    if (isLive) {
+      // LIVE: wsStudents 실시간 값
       const wsArr  = Object.values(wsStudents);
       students   = wsArr.length > 0 ? wsArr.length : (s.student_count || 0);
-      focus      = s.avg_focus || 0;
+      focus      = wsArr.length > 0
+        ? Math.round(wsArr.reduce((a,w) => a + (w.focus_pct || 0), 0) / wsArr.length)
+        : (s.avg_focus || 0);
       drowsyCnt  = wsArr.filter(w => (w.status||'').toLowerCase() === 'drowsy').length;
       const absentCnt = wsArr.filter(w => (w.status||'').toLowerCase() === 'absent').length;
       absentRate = students > 0 ? Math.round(absentCnt / students * 100) : 0;
     } else {
-      students   = s.student_count || 0;
-      focus      = s.avg_focus     || 0;
-      drowsyCnt  = s.drowsy_count  || 0;
-      const ac   = s.absent_count  || 0;
-      absentRate = students > 0 ? Math.round(ac / students * 100) : 0;
+      // 수업종료 / 수업전: 실시간 수치 의미 없으므로 모두 0 초기화
+      students   = 0;
+      focus      = 0;
+      drowsyCnt  = 0;
+      absentRate = 0;
     }
     return `
     <div class="course-card" onclick="enterCourse('${s.room_code}', '${s.course_name || s.room_code}', ${isLive})">
@@ -517,42 +355,6 @@ function enterCourse(roomCode, courseName, isLive) {
   if (dateInput) { dateInput.value = todayStr; dateInput.max = todayStr; }
   document.getElementById('date-picker-label').textContent = '오늘';
 
-  // 데모 모드: 타이머 초기화 후 수업전 상태로 시작
-  if (DEMO_MODE) {
-    _demoTimers.forEach(clearTimeout);
-    _demoIntervals.forEach(clearInterval);
-    _demoTimers = []; _demoIntervals = [];
-    _demoLive = false; _demoEnded = false;
-    _demoChartIdx = 0; realtimeFocusMap = {};
-    // 더미 학생 초기화
-    DEMO_STUDENTS.forEach(s => {
-      s.status='focused'; s.focus_pct=Math.floor(Math.random()*15)+80;
-      s.drowsy_cnt=0; s.absent_cnt=0; s.warning_cnt=0;
-      s.yawn_cnt=0; s.head_cnt=0; s.distracted_cnt=0; s.no_face_cnt=0;
-      _demoStudentMap[s.student_id] = { ...s };
-    });
-    wsStudents = {};
-    selectedSession.date = todayStr; // 오늘 날짜 보장
-
-    // 수업전 초기 UI
-    updateStatusBadge(false);
-    const titleEl = document.getElementById('monitor-title-text');
-    const subEl   = document.getElementById('monitor-card-subtitle');
-    const dotEl   = document.getElementById('monitor-live-dot');
-    if (titleEl)  titleEl.textContent  = '수업 예정';
-    if (subEl)    subEl.textContent    = '강사가 수업을 시작하면 자동으로 전환됩니다';
-    if (dotEl)    dotEl.style.display  = 'none';
-    document.getElementById('d-students').textContent = '0명';
-    document.getElementById('d-focus').textContent    = '-';
-    if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = '0건';
-    if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = '0%';
-    const grid = document.getElementById('realtime-monitor-grid');
-    if (grid) grid.innerHTML = `<div style="padding:30px;text-align:center;color:#9ca3af;font-size:13px;">📅 수업 시작 전입니다 — 강사 입장을 기다리는 중...</div>`;
-    drawFocusChart();
-    _demoBoot();
-    return;
-  }
-
   // 날짜 기준 실제 상태 결정 — isLive 파라미터보다 날짜 비교 우선
   const sessDate = selectedSession.date || '';
   const isFuture = sessDate !== '' && sessDate > todayStr;
@@ -599,19 +401,26 @@ function enterCourse(roomCode, courseName, isLive) {
     const grid = document.getElementById('realtime-monitor-grid');
     if (grid) grid.innerHTML = `<div style="padding:30px;text-align:center;color:#9ca3af;font-size:13px;">📅 수업 예정일입니다</div>`;
   } else {
-    // 과거 or 오늘 종료: API 저장값 표시
+    // 수업 종료 — API에서 실제 집계값 표시 + 학생 목록 로드
     const sc = selectedSession.student_count || 0;
     const dc = selectedSession.drowsy_count  || 0;
     const ac = selectedSession.absent_count  || 0;
+    const af = selectedSession.avg_focus     || 0;
     document.getElementById('d-students').textContent = `${sc}명`;
-    document.getElementById('d-focus').textContent    = `${selectedSession.avg_focus || 0}%`;
+    document.getElementById('d-focus').textContent    = `${af}%`;
     if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${dc}건`;
     if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = sc > 0 ? `${Math.round(ac/sc*100)}%` : '0%';
-    renderRealtimeMonitor(false);
+    // 학생 카드 표시: wsStudents 있으면 바로 표시, 없으면 API 조회
+    if (Object.keys(wsStudents).length > 0) {
+      renderRealtimeMonitor(false);
+    } else if (selectedSession.session_id) {
+      renderRealtimeMonitor(false);
+      renderEndedAttitude(selectedSession.session_id);
+    } else {
+      renderRealtimeMonitor(false);
+    }
   }
   drawFocusChart();
-  // 데모 모드: 타임라인 자동 시작
-  if (DEMO_MODE) _demoBoot();
 }
 
 function setDetailDate(dateStr) {
@@ -745,31 +554,6 @@ function _getTodayStr() {
 }
 
 function showStudentReport(student) {
-  // 데모 학생이면 행동 지표 더미 자동 주입 (리포트 슬라이드 표시용)
-  if (DEMO_MODE && student.student_id?.startsWith('demo_')) {
-    const idx = parseInt(student.student_id.replace('demo_','')) || 1;
-    student = {
-      ...student,
-      drowsy_cnt:     Math.max(student.drowsy_cnt || 0, idx % 5),
-      warning_cnt:    Math.max(student.warning_cnt|| 0, idx % 7 + 2),
-      yawn_cnt:       idx % 4,
-      head_cnt:       idx % 6 * 3 + 2,
-      distracted_cnt: idx % 5 + 1,
-      no_face_cnt:    idx % 3,
-      absent_cnt:     Math.max(student.absent_cnt||0, idx % 3),
-      focus_pct:      student.focus_pct || Math.floor(60 + idx % 30),
-      attendance_ok:  1,
-      absence_total:  idx % 2,
-      late_total:     idx % 3 === 0 ? 1 : 0,
-      // 졸음 발생 시각 더미 (HH:MM 형태)
-      drowsy_timestamps: Array.from({length: Math.max(1, idx%5)}, (_,k) => {
-        const h = 9 + Math.floor(k * 1.8);
-        const m = (k * 17) % 60;
-        return `__dummy__${h*60+m}`;
-      }),
-    };
-  }
-
   _currentReportStudent = student;
   _srSelectedDate = _getTodayStr();
   _srActiveTab = 'daily';
@@ -1362,8 +1146,11 @@ function renderRealtimeMonitor(isLive) {
   const lastUpdated = document.getElementById('monitor-last-updated');
   if (!grid) return;
 
+  // 수업 중: wsStudents 실시간 / 수업 종료: _endedStudentsList(API 집계) 우선
   const wsArr = Object.values(wsStudents);
-  const list  = wsArr; // 실데이터만 — 더미 없음
+  const list  = (isLive || wsArr.length > 0)
+    ? wsArr
+    : (window._endedStudentsList || []);
 
   const now = new Date();
   if (lastUpdated) {
@@ -1502,6 +1289,13 @@ let _srTrendPeriod = '1w'; // 기간 상태: 1w/1m/3m/all
 function renderSrTrend(student) {
   const el = document.getElementById('sr-body-trend');
   if (!el) return;
+
+  if (!USE_DUMMY_TREND) {
+    // TODO: 실제 API에서 학생별 누적 데이터 가져오기
+    // GET /api/students/{student_id}/trend?period={_srTrendPeriod}
+    el.innerHTML = `<div class="empty-msg">누적 데이터를 불러오는 중...</div>`;
+    return;
+  }
 
   // 기간별 데이터 세트 (더미)
   const PERIOD_DATA = {
@@ -2205,41 +1999,49 @@ function drawSimpleChart(svgId, data, lineColor, gradId) {
  * drawReportChart — 오전/오후 그래프 2개 분리 렌더링
  */
 function drawReportChart() {
-  const allData = buildChartData();
-  const amData  = allData.filter(d => parseInt(d.time) < 12);   // 09~11
-  const pmData  = allData.filter(d => parseInt(d.time) >= 13);  // 13~17
+  const period   = document.getElementById('report-period-select')?.value || 'last_1_week';
+  const useDummy = USE_DUMMY_TREND && (period === 'last_1_month' || period === 'all_term');
 
-  // 오전 차트
+  // 기간별 시간대 더미 데이터 (오전/오후 평균)
+  const DUMMY_AMPM = {
+    last_1_month: {
+      am: [{ time:'09:00', focus:84 },{ time:'10:00', focus:88 },{ time:'11:00', focus:80 }],
+      pm: [{ time:'13:00', focus:73 },{ time:'14:00', focus:77 },{ time:'15:00', focus:71 },{ time:'16:00', focus:75 },{ time:'17:00', focus:70 }],
+    },
+    all_term: {
+      am: [{ time:'09:00', focus:81 },{ time:'10:00', focus:85 },{ time:'11:00', focus:77 }],
+      pm: [{ time:'13:00', focus:68 },{ time:'14:00', focus:73 },{ time:'15:00', focus:69 },{ time:'16:00', focus:72 },{ time:'17:00', focus:66 }],
+    },
+  };
+
+  let amData, pmData;
+  if (useDummy) {
+    amData = DUMMY_AMPM[period].am;
+    pmData = DUMMY_AMPM[period].pm;
+  } else {
+    const allData = buildChartData();
+    amData = allData.filter(d => parseInt(d.time) < 12);
+    pmData = allData.filter(d => parseInt(d.time) >= 13);
+  }
+
   const svgAM = document.getElementById('report-chart-am');
   if (svgAM) {
     svgAM.innerHTML = `<defs><linearGradient id="reportGradAM" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs>`;
     drawSimpleChart('report-chart-am', amData, '#FF7710', 'reportGradAM');
   }
 
-  // 오후 차트
   const svgPM = document.getElementById('report-chart-pm');
   if (svgPM) {
     svgPM.innerHTML = `<defs><linearGradient id="reportGradPM" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs>`;
-    // 수업 진행 중일 때 아직 오지 않은 오후 슬롯 비워두기
-    const nowHour = new Date().getHours();
-    const visiblePM = pmData.filter(d => {
-      const slotHour = parseInt(d.time);
-      // 실시간 데이터가 없고 현재 오전이면 오후는 미래 → 더미 사용 여부 판단
-      return true; // 더미는 항상 표시, 실시간이면 자연히 반영됨
-    });
-    drawSimpleChart('report-chart-pm', visiblePM, '#FF7710', 'reportGradPM');
-
-    // 수업 진행 중이고 현재 오전이면 오후 "진행 예정" 안내
-    if (nowHour < 12 && Object.keys(realtimeFocusMap).length > 0) {
-      const emptyPM = document.getElementById('report-chart-pm');
-      if (emptyPM) {
-        const W=400, H=160, PX=36, PY=18;
-        emptyPM.innerHTML += `<text x="${W/2}" y="${H/2}" fill="#d1d5db" font-size="13" text-anchor="middle" font-family="Pretendard,sans-serif">오후 수업 진행 예정</text>`;
-      }
+    if (!useDummy && new Date().getHours() < 12 && Object.keys(realtimeFocusMap).length > 0) {
+      const W=400, H=160;
+      svgPM.innerHTML += `<text x="${W/2}" y="${H/2}" fill="#d1d5db" font-size="13" text-anchor="middle" font-family="Pretendard,sans-serif">오후 수업 진행 예정</text>`;
+    } else {
+      drawSimpleChart('report-chart-pm', pmData, '#FF7710', 'reportGradPM');
     }
   }
 
-  renderAmPmInsight(allData);
+  renderAmPmInsight([...amData, ...pmData]);
 }
 
 /**
@@ -2356,52 +2158,74 @@ function drawTrendChart() {
     </linearGradient>
   </defs>`;
 
-  // 수업 회차별 데이터 생성 (최대 10회차)
-  const sessions = currentSessions.length > 0 ? currentSessions : [];
+  const period   = document.getElementById('report-period-select')?.value || 'last_1_week';
+  const useDummy = USE_DUMMY_TREND && (period === 'last_1_month' || period === 'all_term');
+
+  // 기간별 더미 데이터 — 자연스러운 오르락 내리락 패턴
+  const DUMMY_TREND = {
+    last_1_month: {
+      labels: ['1주차','2주차','3주차','4주차'],
+      values: [82, 75, 70, 78],
+    },
+    all_term: {
+      labels: ['1개월','2개월','3개월','4개월','5개월','6개월'],
+      values: [72, 78, 74, 80, 76, 83],
+    },
+  };
+
   let trendData;
 
-  if (sessions.length >= 2) {
-    // 실제 세션 데이터 사용 (날짜 기준 정렬, 최대 10개)
-    const sorted = [...sessions].sort((a,b) => (a.date||'').localeCompare(b.date||'')).slice(-10);
-    trendData = sorted.map((s, i) => ({
-      time: `${i+1}회`, // 1회, 2회, ...
-      focus: s.avg_focus || 0,
-    }));
+  if (useDummy) {
+    const d = DUMMY_TREND[period];
+    trendData = d.labels.map((t, i) => ({ time: t, focus: d.values[i] }));
   } else {
-    // 더미: 과정 진행에 따른 하락→회복 패턴
-    const labels = ['1주','2주','3주','4주','5주','6주','7주','8주'];
-    const values = [82, 78, 71, 65, 70, 75, 73, 77];
-    trendData = labels.map((t, i) => ({ time: t, focus: values[i] }));
+    // 최근 1주일: 실제 세션 데이터 (날짜 기준 최근 7회)
+    const sorted = [...currentSessions]
+      .sort((a,b) => (a.date||'').localeCompare(b.date||''))
+      .slice(-7);
+    if (sorted.length >= 2) {
+      trendData = sorted.map((s, i) => ({
+        time:  `${i+1}회`,
+        focus: s.avg_focus || 0,
+      }));
+    } else {
+      // 실제 데이터 부족 시 안내 메시지
+      const W=1000, H=260;
+      svg.innerHTML += `<text x="${W/2}" y="${H/2}" fill="#d1d5db" font-size="14" text-anchor="middle" font-family="Pretendard,sans-serif">수업 데이터가 2회 이상 쌓이면 추이가 표시됩니다</text>`;
+      renderTrendInsight([]);
+      return;
+    }
   }
 
   const W=1000, H=260, PAD=44, n=trendData.length;
   const xStep = n > 1 ? (W-PAD*2)/(n-1) : 0;
-  const getX = (i) => PAD + i * xStep;
-  const getY = (v) => H - PAD - (v/100)*(H-PAD*2);
+  const getX = i => PAD + i * xStep;
+  const getY = v => H - PAD - (v/100)*(H-PAD*2);
 
   let html = '';
+  // Y축 그리드
   [0,25,50,75,100].forEach(v => {
     const y = getY(v);
     html += `<line x1="${PAD}" y1="${y}" x2="${W-PAD}" y2="${y}" stroke="#f3f4f6" stroke-dasharray="4 4" stroke-width="1"/>`;
     html += `<text x="${PAD-8}" y="${y+4}" fill="#9ca3af" font-size="11" text-anchor="end" font-family="Pretendard,sans-serif">${v}%</text>`;
   });
+  // X축 라벨
   trendData.forEach((d, i) => {
     html += `<text x="${getX(i)}" y="${H-10}" fill="#9ca3af" font-size="11" text-anchor="middle" font-family="Pretendard,sans-serif">${d.time}</text>`;
   });
 
-  if (n > 0) {
-    const lp = trendData.map((d,i)=>`${i===0?'M':'L'} ${getX(i)} ${getY(d.focus)}`).join(' ');
-    const ap = `${lp} L ${getX(n-1)} ${H-PAD} L ${getX(0)} ${H-PAD} Z`;
-    html += `<path d="${ap}" fill="url(#trendGrad)"/>`;
-    html += `<path d="${lp}" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
-    trendData.forEach((d,i) => {
-      html += `<circle cx="${getX(i)}" cy="${getY(d.focus)}" r="5" fill="#fff" stroke="#6366f1" stroke-width="2.5"/>`;
-    });
-  }
+  // 영역 + 선 + 포인트
+  const lp = trendData.map((d,i)=>`${i===0?'M':'L'} ${getX(i)} ${getY(d.focus)}`).join(' ');
+  const ap = `${lp} L ${getX(n-1)} ${H-PAD} L ${getX(0)} ${H-PAD} Z`;
+  html += `<path d="${ap}" fill="url(#trendGrad)"/>`;
+  html += `<path d="${lp}" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+  trendData.forEach((d,i) => {
+    // 포인트 위에 값 표시
+    html += `<text x="${getX(i)}" y="${getY(d.focus)-10}" fill="#6366f1" font-size="11" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="700">${d.focus}%</text>`;
+    html += `<circle cx="${getX(i)}" cy="${getY(d.focus)}" r="5" fill="#fff" stroke="#6366f1" stroke-width="2.5"/>`;
+  });
 
-  svg.innerHTML = svg.innerHTML + html;
-
-  // 추세 판정 뱃지
+  svg.innerHTML += html;
   renderTrendInsight(trendData);
 }
 
@@ -2496,33 +2320,57 @@ async function loadSessions(courseName) {
     const pdfBtn=document.getElementById('btn-open-pdf');
     if(pdfBtn){pdfBtn.style.opacity='0';pdfBtn.style.display='flex';pdfBtn.style.transition='opacity 0.3s ease';setTimeout(()=>{pdfBtn.style.opacity='1';},300);}
     renderReportStats(); renderSessionList(); renderRiskStudents(); drawReportChart(); drawTrendChart();
+
+    // 기간 필터 변경 이벤트 — 최초 1회만 등록
+    const periodSel = document.getElementById('report-period-select');
+    if (periodSel && !periodSel._bound) {
+      periodSel._bound = true;
+      periodSel.addEventListener('change', () => {
+        renderReportStats(); drawReportChart(); drawTrendChart();
+      });
+    }
   } catch(e) { console.warn('[Admin] 세션 로드 실패:',e); }
 }
 
 function renderReportStats() {
-  const total       = currentSessions.length;
-  const avgFocus    = total > 0 ? Math.round(currentSessions.reduce((a,s)=>a+(s.avg_focus||0),0)/total) : 0;
-  const totalDrowsy = currentSessions.reduce((a,s)=>a+(s.drowsy_count||0),0);
+  const period = document.getElementById('report-period-select')?.value || 'last_1_week';
+
+  // 최근 1주일: 실제 데이터 사용
+  // 최근 1개월 / 과정 전체: USE_DUMMY_TREND=true면 더미 고정
+  const useDummy = USE_DUMMY_TREND && (period === 'last_1_month' || period === 'all_term');
+
+  const total         = currentSessions.length;
+  const avgFocus      = total > 0 ? Math.round(currentSessions.reduce((a,s)=>a+(s.avg_focus||0),0)/total) : 0;
+  const totalDrowsy   = currentSessions.reduce((a,s)=>a+(s.drowsy_count||0),0);
   const totalStudents = currentSessions.reduce((a,s)=>a+(s.student_count||0),0);
   const totalAbsent   = currentSessions.reduce((a,s)=>a+(s.absent_count||0),0);
   const absentRate    = totalStudents > 0 ? Math.round(totalAbsent/totalStudents*100) : 0;
 
-  // 출석률 — 실제 API 연동 시 교체 가능
-  document.getElementById('r-attendance').textContent = '93.7%';
-  document.getElementById('r-focus').textContent      = `${avgFocus}%`;
+  // 기간별 더미 값
+  const DUMMY_BY_PERIOD = {
+    last_1_month: { att:'93.7%', focus:'78%', drowsy:47, absent:3 },
+    all_term:     { att:'91.2%', focus:'75%', drowsy:128, absent:5 },
+  };
+  const d = useDummy ? DUMMY_BY_PERIOD[period] : null;
 
-  // 졸음 확정 누적
+  const _att   = d ? d.att   : `${totalStudents>0?Math.round((1-totalAbsent/totalStudents)*100):0}%`;
+  const _focus = d ? d.focus : `${avgFocus}%`;
+  const _dr    = d ? d.drowsy : totalDrowsy;
+  const _ab    = d ? d.absent : absentRate;
+
+  document.getElementById('r-attendance').textContent = _att;
+  document.getElementById('r-focus').textContent      = _focus;
+
   const drowsyEl = document.getElementById('r-drowsy-total');
-  if (drowsyEl) drowsyEl.textContent = `${totalDrowsy}건`;
+  if (drowsyEl) drowsyEl.textContent = `${_dr}건`;
   const drowsyBadge = document.getElementById('r-drowsy-badge');
   if (drowsyBadge) {
-    drowsyBadge.textContent = totalDrowsy > 10 ? '집중 상담 필요' : totalDrowsy > 0 ? '관리 요망' : '양호';
-    drowsyBadge.className   = `stat-badge ${totalDrowsy > 10 ? 'red' : totalDrowsy > 0 ? 'orange' : 'green'}`;
+    drowsyBadge.textContent = _dr > 10 ? '집중 상담 필요' : _dr > 0 ? '관리 요망' : '양호';
+    drowsyBadge.className   = `stat-badge ${_dr > 10 ? 'red' : _dr > 0 ? 'orange' : 'green'}`;
   }
 
-  // 자리 이탈률
   const absentEl = document.getElementById('r-absent-rate');
-  if (absentEl) absentEl.textContent = `${absentRate}%`;
+  if (absentEl) absentEl.textContent = `${_ab}%`;
   const absentBadge = document.getElementById('r-absent-badge');
   if (absentBadge) {
     absentBadge.textContent = absentRate > 15 ? '이탈 빈발' : absentRate > 5 ? '관리 요망' : '양호';
@@ -2561,10 +2409,10 @@ function renderRiskStudents() {
   const el = document.getElementById('risk-student-list');
   if (!el) return;
 
-  // 실제 학생 데이터: _endedStudentsList 우선, 없으면 더미
+  // 실제 학생 데이터: _endedStudentsList 우선
   const rawList = (window._endedStudentsList && window._endedStudentsList.length)
     ? window._endedStudentsList
-    : []; // 데이터 없을 때 더미 사용
+    : [];
 
   // 위험 점수 계산 함수
   function calcRiskScore(s) {
@@ -2738,11 +2586,8 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sr-pdf-modal')?.addEventListener('click',(e)=>{if(e.target.id==='sr-pdf-modal') e.target.style.display='none';});
 
   connectWS();
-  pollActiveSessions().then(() => {
-    // 데모 모드: 페이지 로드 후 수업 목록에서 자동 타임라인 시작
-    if (DEMO_MODE) startDemoMode();
-  });
-  pollInterval=setInterval(pollActiveSessions,5000);
+  pollActiveSessions();
+  pollInterval = setInterval(pollActiveSessions, 2000); // 2초 폴링
 });
 
 // ── 종합 리포트 PDF 미리보기 ─────────────────
@@ -2771,12 +2616,18 @@ function openPdfPreview() {
   const amPmDiff  = pmAvg - amAvg;
   const fColor    = c => c >= 70 ? '#059669' : c >= 50 ? '#d97706' : '#dc2626';
 
-  // 위험군 (더미 or 실제)
-  const riskDummy = [
+  // 위험군 — USE_DUMMY_TREND=true면 더미, false면 실제 데이터 사용
+  const riskDummy = USE_DUMMY_TREND ? [
     {name:'김OO', level:'🔴 고위험', tag:'잦은 결석+졸음', action:'즉시 상담', score:85},
     {name:'이OO', level:'🟠 주의',   tag:'집중도 하락 추세', action:'주의 관찰', score:55},
     {name:'최OO', level:'🟡 관찰',   tag:'졸음 반복',       action:'경과 확인', score:32},
-  ];
+  ] : (window._endedStudentsList || []).slice(0, 3).map(s => ({
+    name:   s.name || s.student_id,
+    level:  s.focus_pct < 50 ? '🔴 고위험' : s.focus_pct < 65 ? '🟠 주의' : '🟡 관찰',
+    tag:    s.drowsy_cnt > 2 ? '졸음 반복' : s.absent_cnt > 1 ? '자리 이탈 빈발' : '집중도 하락',
+    action: s.focus_pct < 50 ? '즉시 상담' : '주의 관찰',
+    score:  Math.round((1 - s.focus_pct/100) * 100),
+  }));
 
   // SVG 오전 차트 인라인 생성 (PDF용 소형)
   function makeMiniSvg(data, color) {
