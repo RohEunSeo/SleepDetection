@@ -14,7 +14,7 @@ function getWsBaseUrl() {
 
 // ── 상태 ──────────────────────────────────
 const STATUS_LABEL = {
-  focused: '집중', distracted: '주의산만',
+  focused: '집중', distracted: '시선이탈',
   warning: '졸음의심', drowsy: '졸음확정', absent: '자리이탈',
 };
 const STATUS_COLOR = {
