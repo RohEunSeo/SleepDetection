@@ -252,8 +252,24 @@ async function pollActiveSessions() {
     const data = await res.json();
     activeSessions = Array.isArray(data) ? data : [];
 
-    // 오늘 세션이 없으면 — 빈 화면 표시 (과거 데이터 혼입 방지)
-    // 과거 데이터를 오늘 카드에 표시하면 졸음/이탈 수치가 잘못 보임
+    // 오늘 세션이 없으면 — 전체 세션에서 과정명 기준 최신 세션 유지 (과정 카드 유지용)
+    if (!activeSessions.length) {
+      try {
+        const allRes  = await fetch(`${BACKEND_URL}/api/sessions`);
+        const allData = await allRes.json();
+        if (Array.isArray(allData) && allData.length) {
+          const courseMap = {};
+          allData.forEach(s => {
+            const cname = s.course_name || s.room_code;
+            if (!courseMap[cname] || (s.date||'') > (courseMap[cname].date||'')) {
+              // is_active 강제 false (오늘 수업이 없으므로)
+              courseMap[cname] = { ...s, is_active: false };
+            }
+          });
+          activeSessions = Object.values(courseMap);
+        }
+      } catch(e2) { console.warn('[Admin] 전체 세션 조회 실패:', e2); }
+    }
 
     renderCourseGrid();
   } catch(e) { console.warn('[Admin] 폴링 실패:', e); }
