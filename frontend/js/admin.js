@@ -375,8 +375,9 @@ function showDeleteModal(title, desc, onConfirm) {
   document.getElementById('delete-modal').style.display = 'flex';
   _deleteCallback = onConfirm;
   document.getElementById('delete-modal-confirm').onclick = () => {
-    closeDeleteModal();
-    if (_deleteCallback) _deleteCallback();
+    const cb = _deleteCallback;  // 먼저 저장
+    closeDeleteModal();           // 그다음 닫기
+    if (cb) cb();                 // 저장한 콜백 실행
   };
 }
 
