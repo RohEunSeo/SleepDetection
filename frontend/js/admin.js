@@ -192,9 +192,11 @@ function connectWS() {
 
       } else if (msg.type === 'room_closed') {
         // 수업 종료 — 현재 wsStudents 스냅샷 저장 후 UI 전환
-        if (Object.keys(wsStudents).length > 0) {
-          window._endedStudentsList = Object.values(wsStudents).map(s => ({ ...s }));
+        const snapList = Object.values(wsStudents).map(s => ({ ...s }));
+        if (snapList.length > 0) {
+          window._endedStudentsList = snapList;
         }
+        // wsStudents는 유지 (학생 카드 즉시 사라지지 않게)
         // 폴링 즉시 실행 → 최신 세션 상태 반영
         pollActiveSessions();
         // 상세 뷰가 열려있으면 종료 UI로 전환
@@ -250,24 +252,8 @@ async function pollActiveSessions() {
     const data = await res.json();
     activeSessions = Array.isArray(data) ? data : [];
 
-    // 오늘 세션이 없으면 — 전체 세션에서 과정명 기준 최신 세션 유지 (과정 카드 유지용)
-    if (!activeSessions.length) {
-      try {
-        const allRes  = await fetch(`${BACKEND_URL}/api/sessions`);
-        const allData = await allRes.json();
-        if (Array.isArray(allData) && allData.length) {
-          const courseMap = {};
-          allData.forEach(s => {
-            const cname = s.course_name || s.room_code;
-            if (!courseMap[cname] || (s.date||'') > (courseMap[cname].date||'')) {
-              // 반드시 date 필드 유지 + is_active 강제 false (오늘 수업이 없으므로)
-              courseMap[cname] = { ...s, is_active: false };
-            }
-          });
-          activeSessions = Object.values(courseMap);
-        }
-      } catch(e2) { console.warn('[Admin] 전체 세션 조회 실패:', e2); }
-    }
+    // 오늘 세션이 없으면 — 빈 화면 표시 (과거 데이터 혼입 방지)
+    // 과거 데이터를 오늘 카드에 표시하면 졸음/이탈 수치가 잘못 보임
 
     renderCourseGrid();
   } catch(e) { console.warn('[Admin] 폴링 실패:', e); }
@@ -2039,15 +2025,46 @@ const BOOTCAMP_SLOTS = [
  * buildChartData — 실시간 누적 데이터(realtimeFocusMap)만 사용
  * 데이터 없는 슬롯은 포함하지 않음
  */
+// 방법B: 수업 시작 전 슬롯 → 더미, 수업 중 슬롯 → 실제, 이후 → 빈칸
+// 더미 값: 75~85% 사이 자연스럽게
+const CHART_DUMMY_VALUES = {
+  '09:00': 82, '10:00': 78, '11:00': 75,
+  '13:00': 80, '14:00': 72, '15:00': 76, '16:00': 79, '17:00': 74,
+};
+
 function buildChartData() {
+  const nowHour = new Date().getHours();
+  const nowMin  = new Date().getMinutes();
+
   return BOOTCAMP_SLOTS
     .map(slot => {
+      const slotHour = parseInt(slot);
       const rt = realtimeFocusMap[slot];
-      if (!rt || rt.count === 0) return null;
+
+      // 실제 데이터가 있으면 우선 사용 (수업 중 슬롯)
+      if (rt && rt.count > 0) {
+        return {
+          time:     slot,
+          focus:    Math.round(rt.totalFocus / rt.count),
+          sleep:    rt.drowsyCount || 0,
+          isDummy:  false,
+        };
+      }
+
+      // 점심시간(12시) 제외
+      if (slotHour === 12) return null;
+
+      // 현재 시간보다 미래 슬롯 → 빈칸
+      if (slotHour > nowHour) return null;
+      // 현재 시간과 같은 슬롯이고 아직 데이터 없으면 빈칸
+      if (slotHour === nowHour && (!rt || rt.count === 0)) return null;
+
+      // 수업 시작 전 지난 슬롯 → 더미 데이터
       return {
-        time:  slot,
-        focus: Math.round(rt.totalFocus / rt.count),
-        sleep: rt.drowsyCount || 0,
+        time:    slot,
+        focus:   CHART_DUMMY_VALUES[slot] || 78,
+        sleep:   0,
+        isDummy: true,
       };
     })
     .filter(Boolean);
@@ -2074,9 +2091,12 @@ function drawSimpleChart(svgId, data, lineColor, gradId) {
     h += `<line x1="${PX}" y1="${y}" x2="${W-PX}" y2="${y}" stroke="#f3f4f6" stroke-dasharray="3 3" stroke-width="1"/>`;
     h += `<text x="${PX-4}" y="${y+4}" fill="#d1d5db" font-size="9" text-anchor="end" font-family="Pretendard,sans-serif">${v}%</text>`;
   });
-  // X축 라벨
+  // X축 라벨 (실제 데이터 슬롯은 강조)
   data.forEach((d, i) => {
-    h += `<text x="${getX(i)}" y="${H-2}" fill="#c4c9d4" font-size="9" text-anchor="middle" font-family="Pretendard,sans-serif">${d.time}</text>`;
+    const isReal = !d.isDummy;
+    const labelColor = isReal ? '#FF7710' : '#c4c9d4';
+    const fontWeight = isReal ? 'bold' : 'normal';
+    h += `<text x="${getX(i)}" y="${H-2}" fill="${labelColor}" font-size="9" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="${fontWeight}">${d.time}</text>`;
   });
   // 선 + 영역
   const lp = data.map((d,i)=>`${i===0?'M':'L'} ${getX(i)} ${getY(d.focus)}`).join(' ');
@@ -2701,12 +2721,26 @@ function openPdfPreview() {
   const courseName  = selectedCourse || '전체';
   const today       = new Date();
   const dateStr     = `${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}.`;
+  // PDF 기간 필터 반영
+  const period = document.getElementById('report-period-select')?.value || 'last_1_week';
+  const PERIOD_LABEL = { last_1_week:'최근 1주일', last_1_month:'최근 1개월', all_term:'과정 전체 누적' };
+  const periodLabel = PERIOD_LABEL[period] || '최근 1주일';
+  const useDummy = USE_DUMMY_TREND && (period === 'last_1_month' || period === 'all_term');
+
+  // 기간별 더미 통계
+  const DUMMY_STATS = {
+    last_1_month: { att:'93.7%', focus:78, drowsy:47, absent:3 },
+    all_term:     { att:'91.2%', focus:75, drowsy:128, absent:5 },
+  };
+  const ds = useDummy ? DUMMY_STATS[period] : null;
+
   const total       = currentSessions.length;
-  const avgFocus    = total > 0 ? Math.round(currentSessions.reduce((a,s)=>a+(s.avg_focus||0),0)/total) : 0;
-  const totalDrowsy = currentSessions.reduce((a,s)=>a+(s.drowsy_count||0),0);
+  const avgFocus    = ds ? ds.focus : (total > 0 ? Math.round(currentSessions.reduce((a,s)=>a+(s.avg_focus||0),0)/total) : 0);
+  const totalDrowsy = ds ? ds.drowsy : currentSessions.reduce((a,s)=>a+(s.drowsy_count||0),0);
   const totalStudents = currentSessions.reduce((a,s)=>a+(s.student_count||0),0);
   const totalAbsent   = currentSessions.reduce((a,s)=>a+(s.absent_count||0),0);
-  const absentRate    = totalStudents > 0 ? Math.round(totalAbsent/totalStudents*100) : 0;
+  const absentRate    = ds ? ds.absent : (totalStudents > 0 ? Math.round(totalAbsent/totalStudents*100) : 0);
+  const attendanceVal = ds ? ds.att : '93.7%';
 
   // 오전/오후 집중도 (buildChartData 기반)
   const allData   = buildChartData();
@@ -2788,7 +2822,7 @@ function openPdfPreview() {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #FF7710;padding-bottom:16px;margin-bottom:20px;">
       <div>
         <div style="font-size:20px;font-weight:900;color:#111827;margin-bottom:4px;">교육 성취도 종합 리포트</div>
-        <div style="font-size:13px;font-weight:600;color:#6b7280;">${courseName}</div>
+        <div style="font-size:13px;font-weight:600;color:#6b7280;">${courseName} · ${periodLabel}</div>
       </div>
       <div style="text-align:right;">
         <div style="color:#FF7710;font-weight:800;font-size:14px;">🦁 LIKELION</div>
@@ -2800,7 +2834,7 @@ function openPdfPreview() {
     <div style="margin-bottom:18px;">
       <div style="font-size:12px;font-weight:700;color:#111827;border-left:4px solid #FF7710;padding-left:8px;margin-bottom:10px;">1. 기간 내 요약 지표</div>
       <div style="display:flex;gap:8px;">
-        ${[['✅ 평균 출석률','#059669','93.7%'],['📊 평균 집중도','#FF7710',avgFocus+'%'],['😴 졸음 확정',totalDrowsy>5?'#dc2626':'#d97706',totalDrowsy+'건'],['🚶 자리 이탈률',absentRate>15?'#dc2626':'#d97706',absentRate+'%']].map(([l,c,v])=>`
+        ${[['✅ 평균 출석률','#059669',attendanceVal],['📊 평균 집중도','#FF7710',avgFocus+'%'],['😴 졸음 확정',totalDrowsy>5?'#dc2626':'#d97706',totalDrowsy+'건'],['🚶 자리 이탈률',absentRate>15?'#dc2626':'#d97706',absentRate+'%']].map(([l,c,v])=>`
         <div style="flex:1;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;text-align:center;">
           <div style="font-size:9px;color:#6b7280;margin-bottom:4px;">${l}</div>
           <div style="font-size:20px;font-weight:800;color:${c};">${v}</div>
