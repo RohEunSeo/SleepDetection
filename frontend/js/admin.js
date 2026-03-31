@@ -75,24 +75,17 @@ function doLogout() {
 // key: "HH:00" → { totalFocus: number, count: number }
 let realtimeFocusMap = {};
 
-// ⑧⑨⑩ 누적 카운터 — WS 메시지마다 누적 (새로고침해도 유지)
-let _drowsyAccum = {};   // { student_id: count } 졸음 확정 누적
-let _absentAccum = {};   // { student_id: count } 자리 이탈 누적
-// ⑩ 비율 기반 집중도 카운터
-let _statusCount = {};   // { student_id: { focused:0, distracted:0, warning:0, drowsy:0, absent:0, total:0 } }
+// 누적 카운터
+let _drowsyAccum = {};  // { student_id: count } 졸음 확정 전환 횟수
+let _absentAccum = {};  // { student_id: count } 자리 이탈 전환 횟수
+// 집중도 점수 (100에서 상태 전환 시 감점, 회복 없음)
+let _focusScore  = {};  // { student_id: score }
+
+const FOCUS_PENALTY = { drowsy: 15, absent: 10, warning: 5, distracted: 3 };
 
 function _calcLiveFocus(sid) {
-  // 상태 이벤트 비율 기반 집중도 (회복 없음)
-  const c = _statusCount[sid];
-  if (!c || c.total === 0) return 100;
-  const score = (
-    c.focused    * 100 +
-    c.distracted *  70 +
-    c.warning    *  40 +
-    c.drowsy     *  10 +
-    c.absent     *   0
-  ) / c.total;
-  return Math.round(score);
+  if (_focusScore[sid] === undefined) return 100;
+  return _focusScore[sid];
 }
 
 function _recordRealtimeFocus(studentData) {
@@ -160,24 +153,27 @@ function connectWS() {
         if (prev && msg.data.focus_pct !== undefined) {
           msg.data.focus_pct = Math.round(prev.focus_pct * 0.7 + msg.data.focus_pct * 0.3);
         }
-        // ⑧ 졸음 누적
-        if (msg.data.status === 'drowsy') {
-          if (!_drowsyAccum[sid]) _drowsyAccum[sid] = 0;
-          const prevStatus = wsStudents[sid]?.status;
-          if (prevStatus !== 'drowsy') _drowsyAccum[sid]++;
+        const prevStatus = wsStudents[sid]?.status;
+        const newStatus  = msg.data.status || 'focused';
+
+        // 상태가 전환될 때만 처리 (지속 중엔 무시)
+        if (prevStatus !== newStatus) {
+          // 졸음 확정 전환 횟수 누적
+          if (newStatus === 'drowsy') {
+            _drowsyAccum[sid] = (_drowsyAccum[sid] || 0) + 1;
+          }
+          // 자리 이탈 전환 횟수 누적
+          if (newStatus === 'absent') {
+            _absentAccum[sid] = (_absentAccum[sid] || 0) + 1;
+          }
+          // 집중도 감점 (상태 전환 시 1회만, 회복 없음)
+          const penalty = FOCUS_PENALTY[newStatus] || 0;
+          if (penalty > 0) {
+            if (_focusScore[sid] === undefined) _focusScore[sid] = 100;
+            _focusScore[sid] = Math.max(0, _focusScore[sid] - penalty);
+          }
         }
-        // ⑨ 이탈 누적
-        if (msg.data.status === 'absent') {
-          if (!_absentAccum[sid]) _absentAccum[sid] = 0;
-          const prevStatus2 = wsStudents[sid]?.status;
-          if (prevStatus2 !== 'absent') _absentAccum[sid]++;
-        }
-        // ⑩ 상태 비율 카운터
-        if (!_statusCount[sid]) _statusCount[sid] = { focused:0,distracted:0,warning:0,drowsy:0,absent:0,total:0 };
-        const st = msg.data.status || 'focused';
-        if (_statusCount[sid][st] !== undefined) _statusCount[sid][st]++;
-        _statusCount[sid].total++;
-        // 비율 기반 집중도로 덮어씀
+        // 현재 집중도 점수 반영
         msg.data.focus_pct = _calcLiveFocus(sid);
 
         wsStudents[sid] = msg.data;
@@ -193,6 +189,28 @@ function connectWS() {
         delete wsStudents[msg.student_id];
         _updateDashboardStats();
         renderRealtimeMonitor();
+
+      } else if (msg.type === 'room_closed') {
+        // 수업 종료 — 현재 wsStudents 스냅샷 저장 후 UI 전환
+        if (Object.keys(wsStudents).length > 0) {
+          window._endedStudentsList = Object.values(wsStudents).map(s => ({ ...s }));
+        }
+        // 폴링 즉시 실행 → 최신 세션 상태 반영
+        pollActiveSessions();
+        // 상세 뷰가 열려있으면 종료 UI로 전환
+        if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
+          const titleEl = document.getElementById('monitor-title-text');
+          const subEl   = document.getElementById('monitor-card-subtitle');
+          const dotEl   = document.getElementById('monitor-live-dot');
+          const badge   = document.getElementById('detail-status-badge');
+          if (titleEl) titleEl.textContent = '당일 학생 수업 태도';
+          if (subEl)   subEl.textContent   = '집중도 낮은 순 정렬 — 수업 결과 요약';
+          if (dotEl)   { dotEl.style.display='inline-block'; dotEl.style.background='#9ca3af'; dotEl.style.animation='none'; }
+          if (badge)   { badge.style.cssText='display:flex;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;'; badge.innerHTML='수업종료'; }
+          // 저장된 스냅샷으로 학생 목록 표시
+          renderRealtimeMonitor(false);
+          drawFocusChart();
+        }
       }
     };
     ws.onclose = () => {
@@ -1219,9 +1237,13 @@ function renderRealtimeMonitor(isLive) {
 
   // 수업 중: wsStudents 실시간 / 수업 종료: _endedStudentsList(API 집계) 우선
   const wsArr = Object.values(wsStudents);
-  const list  = (isLive || wsArr.length > 0)
+  // 수업 중(isLive): wsStudents 실시간
+  // 수업 종료(_monitorIsLive=false): _endedStudentsList 스냅샷 우선
+  const list  = (_monitorIsLive && wsArr.length > 0)
     ? wsArr
-    : (window._endedStudentsList || []);
+    : (!_monitorIsLive && window._endedStudentsList?.length > 0)
+    ? window._endedStudentsList
+    : wsArr;
 
   const now = new Date();
   if (lastUpdated) {
@@ -2127,12 +2149,12 @@ function drawReportChart() {
  * focus-chart-am / focus-chart-pm 각각에 그림
  */
 function drawFocusChart() {
-  // 날짜 확인: 과거 날짜(3/30 더미 제외) 또는 미래 날짜면 차트 그리지 않음
   const nowDate  = new Date();
   const todayStr = `${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,'0')}-${String(nowDate.getDate()).padStart(2,'0')}`;
-  const sessDate = selectedSession?.date || '';
-  const isPast   = sessDate !== '' && sessDate < todayStr;
-  const isFuture = sessDate !== '' && sessDate > todayStr;
+  // sessDate 없으면(=오늘 수업) 오늘로 간주 → 차트 렌더링
+  const sessDate = selectedSession?.date || todayStr;
+  const isPast   = sessDate < todayStr;
+  const isFuture = sessDate > todayStr;
   // 과거 날짜 or 미래 날짜 → 빈 차트
   if (isPast || isFuture) {
     const msgText = isFuture ? '수업 예정일 — 데이터 없음' : '해당 날짜의 차트 데이터가 없습니다';

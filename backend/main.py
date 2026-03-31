@@ -113,15 +113,19 @@ async def admin_ws(websocket: WebSocket):
         manager.disconnect_admin(websocket)
 
 
-# [수정] 수업 종료 엔드포인트 — 모든 학생에게 room_closed 신호 broadcast
+# [수정] 수업 종료 엔드포인트 — 학생 + 매니저 모두에게 room_closed 신호 broadcast
 @app.post("/api/room/close")
 async def close_room(room_code: str = "LION-2025"):
-    await manager.broadcast_to_students(
-        {
-            "type": "room_closed",
-            "room_code": room_code,
-        }
-    )
+    # 학생들에게 종료 신호
+    await manager.broadcast_to_students({
+        "type": "room_closed",
+        "room_code": room_code,
+    })
+    # 매니저에게도 종료 신호 → 즉시 수업종료 처리
+    await manager.broadcast_to_admins({
+        "type": "room_closed",
+        "room_code": room_code,
+    })
     store.end_session(room_code)
     return {"status": "closed", "room_code": room_code}
 
