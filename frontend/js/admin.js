@@ -76,8 +76,10 @@ function doLogout() {
 let realtimeFocusMap = {};
 
 // 누적 카운터
-let _drowsyAccum = {};  // { student_id: count } 졸음 확정 전환 횟수
-let _absentAccum = {};  // { student_id: count } 자리 이탈 전환 횟수
+let _drowsyAccum     = {};  // 졸음 확정 전환 횟수
+let _absentAccum     = {};  // 자리 이탈 전환 횟수
+let _warningAccum    = {};  // 졸음 의심 전환 횟수
+let _distractedAccum = {};  // 시선 이탈 전환 횟수
 // 집중도 점수 (100에서 상태 전환 시 감점, 회복 없음)
 let _focusScore  = {};  // { student_id: score }
 
@@ -158,23 +160,23 @@ function connectWS() {
 
         // 상태가 전환될 때만 처리 (지속 중엔 무시)
         if (prevStatus !== newStatus) {
-          // 졸음 확정 전환 횟수 누적
-          if (newStatus === 'drowsy') {
-            _drowsyAccum[sid] = (_drowsyAccum[sid] || 0) + 1;
-          }
-          // 자리 이탈 전환 횟수 누적
-          if (newStatus === 'absent') {
-            _absentAccum[sid] = (_absentAccum[sid] || 0) + 1;
-          }
-          // 집중도 감점 (상태 전환 시 1회만, 회복 없음)
+          if (newStatus === 'drowsy')     _drowsyAccum[sid] = (_drowsyAccum[sid] || 0) + 1;
+          if (newStatus === 'absent')     _absentAccum[sid] = (_absentAccum[sid] || 0) + 1;
+          if (newStatus === 'warning')    { if (!_warningAccum[sid]) _warningAccum[sid]=0; _warningAccum[sid]++; }
+          if (newStatus === 'distracted') { if (!_distractedAccum[sid]) _distractedAccum[sid]=0; _distractedAccum[sid]++; }
           const penalty = FOCUS_PENALTY[newStatus] || 0;
           if (penalty > 0) {
             if (_focusScore[sid] === undefined) _focusScore[sid] = 100;
             _focusScore[sid] = Math.max(0, _focusScore[sid] - penalty);
           }
         }
-        // 현재 집중도 점수 반영
-        msg.data.focus_pct = _calcLiveFocus(sid);
+        msg.data.focus_pct   = _calcLiveFocus(sid);
+        // 누적 카운트 학생 데이터에 반영 (개별 리포트용)
+        msg.data.drowsy_cnt     = _drowsyAccum[sid]    || 0;
+        msg.data.absent_cnt     = _absentAccum[sid]    || 0;
+        msg.data.warning_cnt    = _warningAccum[sid]   || 0;
+        msg.data.distracted_cnt = _distractedAccum[sid]|| 0;
+        msg.data.yawn_cnt       = msg.data.yawn_cnt    || 0;
 
         wsStudents[sid] = msg.data;
         _recordRealtimeFocus(msg.data);
@@ -191,15 +193,21 @@ function connectWS() {
         renderRealtimeMonitor();
 
       } else if (msg.type === 'room_closed') {
-        // 수업 종료 — 현재 wsStudents 스냅샷 저장 후 UI 전환
+        // 수업 종료 — 스냅샷 저장 (학생 카드 유지)
         const snapList = Object.values(wsStudents).map(s => ({ ...s }));
-        if (snapList.length > 0) {
-          window._endedStudentsList = snapList;
-        }
-        // wsStudents는 유지 (학생 카드 즉시 사라지지 않게)
-        // 폴링 즉시 실행 → 최신 세션 상태 반영
-        pollActiveSessions();
-        // 상세 뷰가 열려있으면 종료 UI로 전환
+        if (snapList.length > 0) window._endedStudentsList = snapList;
+
+        // 상단 수치 저장 (폴링 덮어쓰기 전에 고정)
+        window._endedStats = {
+          students: Object.keys(wsStudents).length,
+          focus:    Object.keys(wsStudents).length
+            ? Math.round(Object.values(wsStudents).reduce((a,s)=>a+(s.focus_pct||0),0)/Object.keys(wsStudents).length)
+            : 0,
+          drowsy: Object.values(_drowsyAccum).reduce((a,b)=>a+b,0),
+          absent: Object.values(_absentAccum).reduce((a,b)=>a+b,0),
+        };
+
+        // 상세 뷰가 열려있으면 종료 UI로 즉시 전환
         if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
           const titleEl = document.getElementById('monitor-title-text');
           const subEl   = document.getElementById('monitor-card-subtitle');
@@ -209,10 +217,30 @@ function connectWS() {
           if (subEl)   subEl.textContent   = '집중도 낮은 순 정렬 — 수업 결과 요약';
           if (dotEl)   { dotEl.style.display='inline-block'; dotEl.style.background='#9ca3af'; dotEl.style.animation='none'; }
           if (badge)   { badge.style.cssText='display:flex;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;'; badge.innerHTML='수업종료'; }
-          // 저장된 스냅샷으로 학생 목록 표시
+          // 저장된 수치로 상단 업데이트
+          document.getElementById('d-students').textContent = `${window._endedStats.students}명`;
+          document.getElementById('d-focus').textContent    = `${window._endedStats.focus}%`;
+          if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${window._endedStats.drowsy}건`;
+          if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = `${window._endedStats.absent}건`;
           renderRealtimeMonitor(false);
           drawFocusChart();
         }
+        // 폴링은 5초 뒤 (스냅샷 덮어쓰기 방지)
+        setTimeout(() => pollActiveSessions(), 5000);
+        renderCourseGrid();
+
+      } else if (msg.type === 'room_opened') {
+        // 수업 시작 — 카운터 초기화 + 즉시 폴링
+        wsStudents            = {};
+        _drowsyAccum          = {};
+        _absentAccum          = {};
+        _warningAccum         = {};
+        _distractedAccum      = {};
+        _focusScore           = {};
+        realtimeFocusMap      = {};
+        window._endedStudentsList = [];
+        window._endedStats    = null;
+        pollActiveSessions();
       }
     };
     ws.onclose = () => {
@@ -1382,8 +1410,9 @@ function _makeMonitorCard(s, isLive) {
 // ── 누적 추이 탭 렌더링 ───────────────────────
 let _srTrendPeriod = '1w'; // 기간 상태: 1w/1m/3m/all
 
-// ⑰ 누적 추이 기간 변경 함수 (버튼 안 눌리는 버그 수정)
+// ⑰ 누적 추이 기간 변경 함수
 function _setSrTrendPeriod(period) {
+  _srTrendPeriod = period;
   window._srTrendPeriod = period;
   if (_currentReportStudent) renderSrTrend(_currentReportStudent);
 }
@@ -2758,12 +2787,26 @@ function openPdfPreview() {
   const absentRate    = ds ? ds.absent : (totalStudents > 0 ? Math.round(totalAbsent/totalStudents*100) : 0);
   const attendanceVal = ds ? ds.att : '93.7%';
 
-  // 오전/오후 집중도 (buildChartData 기반)
-  const allData   = buildChartData();
-  const amData    = allData.filter(d => parseInt(d.time) < 12);
-  const pmData    = allData.filter(d => parseInt(d.time) >= 13);
-  const amAvg     = amData.length ? Math.round(amData.reduce((a,b)=>a+b.focus,0)/amData.length) : 0;
-  const pmAvg     = pmData.length ? Math.round(pmData.reduce((a,b)=>a+b.focus,0)/pmData.length) : 0;
+  // 오전/오후 집중도 — 기간별 데이터 (종합 리포트 화면과 동일)
+  const DUMMY_AMPM = {
+    last_1_week:  {
+      am: [{time:'09:00',focus:84},{time:'10:00',focus:88},{time:'11:00',focus:80}],
+      pm: [{time:'13:00',focus:76},{time:'14:00',focus:79},{time:'15:00',focus:73},{time:'16:00',focus:77},{time:'17:00',focus:71}],
+    },
+    last_1_month: {
+      am: [{time:'09:00',focus:84},{time:'10:00',focus:88},{time:'11:00',focus:80}],
+      pm: [{time:'13:00',focus:73},{time:'14:00',focus:77},{time:'15:00',focus:71},{time:'16:00',focus:75},{time:'17:00',focus:70}],
+    },
+    all_term: {
+      am: [{time:'09:00',focus:81},{time:'10:00',focus:85},{time:'11:00',focus:77}],
+      pm: [{time:'13:00',focus:68},{time:'14:00',focus:73},{time:'15:00',focus:69},{time:'16:00',focus:72},{time:'17:00',focus:66}],
+    },
+  };
+  const pdfAmPm = DUMMY_AMPM[period] || DUMMY_AMPM['last_1_week'];
+  const amData  = pdfAmPm.am;
+  const pmData  = pdfAmPm.pm;
+  const amAvg   = Math.round(amData.reduce((a,b)=>a+b.focus,0)/amData.length);
+  const pmAvg   = Math.round(pmData.reduce((a,b)=>a+b.focus,0)/pmData.length);
   const amPmDiff  = pmAvg - amAvg;
   const fColor    = c => c >= 70 ? '#059669' : c >= 50 ? '#d97706' : '#dc2626';
 
@@ -2804,14 +2847,26 @@ function openPdfPreview() {
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;" preserveAspectRatio="none">${h}</svg>`;
   }
 
-  // 기간별 추이 SVG
+  // 기간별 추이 SVG — 종합 리포트 화면 drawTrendChart()와 동일한 데이터 사용
   function makeTrendSvg() {
-    const labels = currentSessions.length >= 2
-      ? [...currentSessions].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(-8).map((s,i)=>`${i+1}회`)
-      : ['1주','2주','3주','4주','5주','6주','7주','8주'];
-    const values = currentSessions.length >= 2
-      ? [...currentSessions].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(-8).map(s=>s.avg_focus||0)
-      : [82,78,71,65,70,75,73,77];
+    // 기간별 더미 데이터 (drawTrendChart와 동일)
+    const TREND_DUMMY = {
+      last_1_week:  { labels: ['1회','2회','3회','4회','5회','6회','7회'], values: [82,78,75,80,72,76,79] },
+      last_1_month: { labels: ['1주차','2주차','3주차','4주차'], values: [82,75,70,78] },
+      all_term:     { labels: ['1개월','2개월','3개월','4개월','5개월','6개월'], values: [72,78,74,80,76,83] },
+    };
+    let labels, values;
+    if (useDummy || period !== 'last_1_week') {
+      const d = TREND_DUMMY[period] || TREND_DUMMY['last_1_week'];
+      labels = d.labels; values = d.values;
+    } else if (currentSessions.length >= 2) {
+      const sorted = [...currentSessions].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(-7);
+      labels = sorted.map((_,i)=>`${i+1}회`);
+      values = sorted.map(s=>s.avg_focus||0);
+    } else {
+      labels = TREND_DUMMY['last_1_week'].labels;
+      values = TREND_DUMMY['last_1_week'].values;
+    }
     const W=580,H=100,PX=24,PY=12;
     const n=labels.length;
     const getX = i => PX + i*((W-PX*2)/Math.max(n-1,1));

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from config import DAILY_API_KEY
 from daily_service import generate_room_code, ensure_room, create_meeting_token
 from session_store import store
+from ws_manager import manager  # room_opened broadcast용
 
 router = APIRouter(prefix="/api", tags=["room"])
 
@@ -40,7 +41,7 @@ async def create_room(
                 room_code  = res.data[0]["room_code"]
                 session_id = res.data[0]["session_id"]
                 print(f"[Room] 기존 세션 재사용: {room_code} / 과정: {course_name}")
-                # 세션 재활성화 (수업 종료 후 다시 입장해도 같은 코드 유지)
+                # 세션 재활성화
                 _supa.table("sessions").update({
                     "is_active":  True,
                     "ended_at":   None,
@@ -52,6 +53,13 @@ async def create_room(
                     room_code=room_code,
                     is_owner=True,
                 )
+                # 매니저에게 즉시 LIVE 알림 → LIVE 배지 바로 뜸
+                await manager.broadcast_to_admins({
+                    "type":        "room_opened",
+                    "room_code":   room_code,
+                    "course_name": course_name,
+                    "instructor":  instructor_name,
+                })
                 return {
                     "room_code":  room_code,
                     "room_url":   room.get("url", ""),
@@ -74,6 +82,13 @@ async def create_room(
         instructor  = instructor_name,
         course_name = course_name,
     )
+    # 매니저에게 즉시 LIVE 알림
+    await manager.broadcast_to_admins({
+        "type":        "room_opened",
+        "room_code":   room_code,
+        "course_name": course_name,
+        "instructor":  instructor_name,
+    })
     return {
         "room_code":  room_code,
         "room_url":   room.get("url", ""),
