@@ -44,13 +44,87 @@ async def list_active_sessions():
 
 
 @router.get("/sessions")
-async def list_sessions(course_name: str | None = None):
+async def list_sessions(course_name: str | None = None, date: str | None = None):
     """
-    세션 목록 조회 (관리자 리포트 탭용)
+    세션 목록 조회
     GET /api/sessions                          → 전체
     GET /api/sessions?course_name=AI엔지니어링 → 과정별 필터
+    GET /api/sessions?date=2026-03-30          → 날짜별 필터 (관리자 대시보드용)
     """
-    return store.get_all(course_name=course_name)
+    return store.get_all(course_name=course_name, date=date)
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """
+    세션 삭제 (관리자 대시보드 카드 삭제용)
+    DELETE /api/sessions/{session_id}
+    """
+    try:
+        from session_store import supabase
+        supabase.table("student_events").delete().eq("session_id", session_id).execute()
+        supabase.table("sessions").delete().eq("session_id", session_id).execute()
+        return {"status": "deleted", "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions/{session_id}/students")
+async def get_session_students(session_id: str):
+    """
+    세션별 학생 개별 데이터 조회 (관리자 개별 리포트용)
+    GET /api/sessions/{session_id}/students
+    """
+    try:
+        from session_store import supabase
+        res = supabase.table("student_events") \
+            .select("*") \
+            .eq("session_id", session_id) \
+            .execute()
+        events = res.data or []
+
+        # 학생별로 집계
+        students = {}
+        for e in events:
+            sid = e.get("student_id", "")
+            if not sid:
+                continue
+            if sid not in students:
+                students[sid] = {
+                    "student_id":    sid,
+                    "name":          e.get("name", sid),
+                    "drowsy_cnt":    0,
+                    "yawn_cnt":      0,
+                    "head_cnt":      0,
+                    "absent_cnt":    0,
+                    "distracted_cnt":0,
+                    "warning_cnt":   0,
+                    "total_events":  0,
+                }
+            s = students[sid]
+            s["total_events"] += 1
+            status = e.get("status", "")
+            if status == "drowsy":     s["drowsy_cnt"]     += 1
+            if status == "absent":     s["absent_cnt"]     += 1
+            if status == "distracted": s["distracted_cnt"] += 1
+            if status == "warning":    s["warning_cnt"]    += 1
+            if e.get("yawn_cnt", 0) > 0: s["yawn_cnt"]    += 1
+            if e.get("head_cnt", 0) > 0: s["head_cnt"]    += 1
+
+        # 집중도 계산
+        result = []
+        for s in students.values():
+            penalty = (s["drowsy_cnt"]*10 + s["absent_cnt"]*15 +
+                       s["warning_cnt"]*5  + s["yawn_cnt"]*3 +
+                       s["head_cnt"]*3)
+            s["focus_pct"] = max(0, 100 - penalty)
+            result.append(s)
+
+        result.sort(key=lambda x: x["focus_pct"])
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/sessions/{session_id}")

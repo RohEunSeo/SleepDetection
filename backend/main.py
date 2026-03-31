@@ -93,6 +93,19 @@ async def admin_ws(websocket: WebSocket):
                         "role":      "instructor",
                         "timestamp": data.get("timestamp", ""),
                     })
+                elif msg_type == "stretch_start":
+                    await manager.broadcast_to_students({
+                        "type": "stretch_start",
+                    })
+                elif msg_type == "break_start":
+                    await manager.broadcast_to_students({
+                        "type": "break_start",
+                        "duration": data.get("duration", 300),
+                    })
+                elif msg_type == "break_end":
+                    await manager.broadcast_to_students({
+                        "type": "break_end",
+                    })
             except Exception:
                 pass
 
@@ -157,22 +170,3 @@ async def caption_text_default_ws(websocket: WebSocket, speaker: str = "강사",
             )
     except (WebSocketDisconnect, RuntimeError):
         return
-
-@app.post("/api/stretch")
-async def stretch(room_code: str = "LION-2025"):
-    await manager.broadcast_to_students({"type": "stretch_start"})
-    return {"status": "ok"}
-
-@app.post("/api/break/start")
-async def break_start(duration: int = 300):
-    await manager.broadcast_to_students({"type": "break_start", "duration": duration})
-    return {"status": "ok"}
-
-@app.post("/api/break/end")
-async def break_end():
-    await manager.broadcast_to_students({"type": "break_end"})
-    return {"status": "ok"}
-
-frontend_path = os.path.join(os.path.dirname(__file__), '..', 'frontend')
-if os.path.exists(frontend_path):
-    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")

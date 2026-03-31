@@ -100,9 +100,17 @@
 
       <!-- ── 대시보드: 수업 목록 ── -->
       <div class="view active" id="view-dashboard-list">
-        <div class="view-title-wrap">
-          <h1 class="view-title">나의 수업 목록</h1>
-          <p class="view-subtitle">현재 진행 중이거나 관리 중인 클래스를 선택하세요.</p>
+        <div class="view-title-wrap" style="display:flex;justify-content:space-between;align-items:flex-end;">
+          <div>
+            <h1 class="view-title">나의 수업 목록</h1>
+            <p class="view-subtitle">현재 진행 중이거나 관리 중인 클래스를 선택하세요.</p>
+          </div>
+          <button id="btn-delete-all" onclick="deleteAllSessions()"
+            style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;font-size:12px;font-weight:600;color:#9ca3af;cursor:pointer;margin-bottom:4px;transition:all 0.2s;"
+            onmouseover="this.style.borderColor='#ef4444';this.style.color='#ef4444'"
+            onmouseout="this.style.borderColor='#e5e7eb';this.style.color='#9ca3af'">
+            🗑️ 오늘 수업 전체 삭제
+          </button>
         </div>
         <div class="course-grid" id="course-grid">
           <div class="loading-msg">수업 목록 불러오는 중...</div>
@@ -139,36 +147,171 @@
         <div class="stat-cards">
           <div class="stat-card">
             <div class="stat-card-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-            <div><div class="stat-val" id="d-students">-</div><div class="stat-label">당일 출석 인원</div><div class="stat-badge green">전원 출석 완료</div></div>
+            <div><div class="stat-val" id="d-students">-</div><div class="stat-label">당일 출석 인원</div><div class="stat-badge green" id="d-students-badge">전원 출석 완료</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-card-icon orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-            <div><div class="stat-val" id="d-focus">-</div><div class="stat-label">당일 평균 집중도</div><div class="stat-badge green">양호함</div></div>
+            <div><div class="stat-val" id="d-focus">-</div><div class="stat-label">당일 평균 집중도</div><div class="stat-badge green" id="d-focus-badge">양호함</div></div>
           </div>
           <div class="stat-card">
-            <div class="stat-card-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
-            <div><div class="stat-val" id="d-alert">-</div><div class="stat-label">당일 경고 발생</div><div class="stat-badge red">관리 요망</div></div>
+            <div class="stat-card-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div>
+            <div><div class="stat-val" id="d-drowsy">-</div><div class="stat-label">졸음 확정 건수</div><div class="stat-badge red">관리 요망</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-icon orange" style="background:#fff7ed;"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+            <div><div class="stat-val" id="d-absent">-</div><div class="stat-label">당일 이탈률</div><div class="stat-badge orange">관리 요망</div></div>
           </div>
         </div>
-        <div class="card">
-          <div class="card-header-row">
-            <div><div class="card-title">당일 학생별 수업 태도</div><div class="card-subtitle">실시간 감지 기준 집중도 현황</div></div>
+        <!-- 학생 모니터링 카드 (수업 중: 실시간, 종료: 당일 결과) — 차트보다 먼저 표시 -->
+        <div class="card" id="realtime-monitor-card" style="padding:20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div>
+              <div class="card-title" style="display:flex;align-items:center;gap:8px;" id="monitor-card-title">
+                <span id="monitor-live-dot" style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block;animation:pulse 1.5s infinite;"></span>
+                <span id="monitor-title-text">실시간 학생 모니터링</span>
+              </div>
+              <div class="card-subtitle" id="monitor-card-subtitle">상태별 그룹 — 강사 실시간 모니터링 뷰</div>
+            </div>
+            <div style="font-size:12px;color:#9ca3af;" id="monitor-last-updated">-</div>
           </div>
-          <div class="student-table-head"><span>#</span><span>학생 이름</span><span class="align-center">수업 태도</span><span class="align-right">상태</span></div>
-          <div id="student-attitude-list"><div class="empty-msg">접속 중인 학생이 없습니다</div></div>
+          <div id="realtime-monitor-grid"></div>
         </div>
-        <div class="card">
-          <div class="card-header-row">
-            <div><div class="card-title">당일 시간대별 집중도 흐름</div><div class="card-subtitle">실시간 웹캠 분석 데이터 기반</div></div>
+
+        <!-- 당일 시간대별 집중도 — 오전/오후 분리 카드 -->
+        <div class="card" style="padding:20px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+            <div>
+              <div class="card-title">당일 시간대별 집중도 흐름</div>
+              <div class="card-subtitle">실시간 웹캠 분석 데이터 기반</div>
+            </div>
             <div class="chart-legend">
               <span class="legend-dot indigo"></span><span>집중도</span>
               <span class="legend-dot orange"></span><span>졸음 빈도</span>
             </div>
           </div>
-          <div class="chart-wrap">
-            <svg id="focus-chart" viewBox="0 0 1000 300" preserveAspectRatio="none" class="chart-svg">
-              <defs><linearGradient id="focusGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#6366f1" stop-opacity="0.15"/><stop offset="100%" stop-color="#6366f1" stop-opacity="0"/></linearGradient></defs>
-            </svg>
+          <!-- 오전/오후 그래프 나란히 — 각각 테두리 카드 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <!-- 오전 -->
+            <div style="border:1.5px solid #e0e7ff;border-radius:12px;padding:14px;background:#fafaff;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+                <span style="font-size:12px;font-weight:700;color:#2563eb;background:#eff6ff;padding:3px 10px;border-radius:6px;">☀️ 오전 (09:00~12:00)</span>
+              </div>
+              <svg id="focus-chart-am" viewBox="0 0 460 180" style="width:100%;overflow:visible;">
+                <defs>
+                  <linearGradient id="focusGradAM" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#6366f1" stop-opacity="0.15"/>
+                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                  </linearGradient>
+                  <linearGradient id="sleepGradAM" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#FF7710" stop-opacity="0.1"/>
+                    <stop offset="100%" stop-color="#FF7710" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <!-- 오후 -->
+            <div style="border:1.5px solid #ffedd5;border-radius:12px;padding:14px;background:#fffaf5;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+                <span style="font-size:12px;font-weight:700;color:#ea580c;background:#fff7ed;padding:3px 10px;border-radius:6px;">🌆 오후 (13:00~18:00)</span>
+                <span id="dashboard-pm-live-badge" style="display:none;font-size:10px;font-weight:700;color:#10b981;background:#d1fae5;padding:2px 7px;border-radius:4px;">● 진행중</span>
+              </div>
+              <svg id="focus-chart-pm" viewBox="0 0 460 180" style="width:100%;overflow:visible;">
+                <defs>
+                  <linearGradient id="focusGradPM" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#6366f1" stop-opacity="0.15"/>
+                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                  </linearGradient>
+                  <linearGradient id="sleepGradPM" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#FF7710" stop-opacity="0.1"/>
+                    <stop offset="100%" stop-color="#FF7710" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+          </div>
+          <!-- 오전/오후 평균 비교 뱃지 -->
+          <div id="dashboard-ampm-badge" style="display:flex;gap:10px;margin-top:14px;"></div>
+        </div>
+
+      </div>
+
+      <!-- ── 전체 학생 수업 태도 뷰 ── -->
+      <div class="view" id="view-all-students">
+        <div class="detail-header">
+          <button class="back-btn" id="btn-back-from-all-students">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </button>
+          <div class="detail-title-wrap">
+            <div class="detail-title-row">
+              <h1 class="view-title">전체 학생 수업 태도</h1>
+            </div>
+            <p class="view-subtitle">당일 참여 학생 전체의 상세 태도 — 수업 태도 안좋은 순 정렬</p>
+          </div>
+        </div>
+        <div class="card" style="flex:1;">
+          <div style="display:grid;grid-template-columns:40px 1fr 2fr 100px;gap:12px;padding:10px 12px;background:#f9fafb;border-radius:8px;margin-bottom:8px;font-size:12px;font-weight:700;color:#6b7280;">
+            <span>#</span><span>학생 이름</span><span style="text-align:center;">당일 수업 태도</span><span style="text-align:right;">개별 리포트</span>
+          </div>
+          <div id="all-students-view-list">
+            <div class="empty-msg">접속 중인 학생이 없습니다</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 학생 개별 리포트 뷰 ── -->
+      <div class="view" id="view-student-report">
+        <!-- 헤더 -->
+        <div class="detail-header">
+          <button class="back-btn" id="btn-back-from-student-report">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </button>
+          <div class="detail-title-wrap">
+            <div class="detail-title-row">
+              <h1 class="view-title" id="sr-student-name">학생 개별 리포트</h1>
+              <span id="sr-student-badge" style="display:none;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;background:#FFF3E8;color:#FF7710;border:1px solid #FF7710;"></span>
+            </div>
+            <p class="view-subtitle">개별 학생의 누적 출결 및 수업 태도 분석</p>
+          </div>
+          <!-- 날짜 선택 -->
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+            <div style="position:relative;">
+              <button id="sr-date-btn" style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);font-size:13px;font-weight:600;color:#374151;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#FF7710" stroke-width="2" width="15" height="15"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span id="sr-date-label">오늘</span>
+              </button>
+              <input type="date" id="sr-date-input" style="position:absolute;top:100%;right:0;opacity:0;pointer-events:none;width:0;height:0;">
+            </div>
+            <button id="sr-pdf-btn" style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#FF7710;border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(255,119,16,0.3);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              PDF 출력
+            </button>
+          </div>
+        </div>
+
+        <!-- 탭 전환 버튼 -->
+        <div class="sr-tab-bar">
+          <button class="sr-tab active" id="sr-tab-daily" onclick="switchSrTab('daily')">📅 당일 상세</button>
+          <button class="sr-tab" id="sr-tab-trend" onclick="switchSrTab('trend')">📊 누적 추이</button>
+        </div>
+
+        <!-- 당일 탭 본문 -->
+        <div id="sr-body-daily" style="display:flex;flex-direction:column;gap:16px;"></div>
+        <!-- 누적 추이 탭 본문 -->
+        <div id="sr-body-trend" style="display:none;flex-direction:column;gap:16px;"></div>
+      </div>
+
+      <!-- 학생 개별 PDF 미리보기 모달 -->
+      <div id="sr-pdf-modal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px;">
+        <div style="background:#1f2937;border-radius:16px;width:100%;max-width:680px;max-height:96vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid #374151;flex-shrink:0;">
+            <span style="flex:1;font-size:14px;font-weight:700;color:#fff;" id="sr-pdf-title">학생 개별 리포트</span>
+            <button id="sr-pdf-save-btn" style="padding:6px 16px;background:#FF7710;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">💾 PDF 저장</button>
+            <button id="sr-pdf-close-btn" style="width:30px;height:30px;background:rgba(255,255,255,0.1);border:none;border-radius:8px;color:#fff;font-size:15px;cursor:pointer;">✕</button>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:20px;display:flex;justify-content:center;">
+            <div id="sr-pdf-page" style="width:100%;max-width:595px;">
+              <div id="sr-pdf-content" style="background:#fff;border-radius:8px;padding:36px;box-shadow:0 4px 20px rgba(0,0,0,0.2);min-height:842px;font-family:'Pretendard',sans-serif;"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -203,22 +346,112 @@
 
         <!-- 선택 후 내용 -->
         <div id="report-content" style="display:none;flex-direction:column;gap:20px;">
+
+          <!-- ★ stat-cards 4개: 평균출석률/평균집중도/졸음확정/자리이탈률 -->
           <div class="stat-cards">
-            <div class="stat-card"><div class="stat-card-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-val" id="r-attendance">-</div><div class="stat-label">선택 기간 평균 출석률</div><div class="stat-badge blue">정상참여 비율 높음</div></div></div>
-            <div class="stat-card"><div class="stat-card-icon orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div><div class="stat-val" id="r-focus">-</div><div class="stat-label">선택 기간 평균 집중도</div><div class="stat-badge green" id="r-focus-badge">-</div></div></div>
-            <div class="stat-card"><div class="stat-card-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div><div class="stat-val" id="r-alerts">-</div><div class="stat-label">총 경고 발생</div><div class="stat-badge red">집중 상담 필요</div></div></div>
+            <div class="stat-card">
+              <div class="stat-card-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+              <div><div class="stat-val" id="r-attendance">-</div><div class="stat-label">선택 기간 평균 출석률</div><div class="stat-badge blue">정상참여 비율 높음</div></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-icon orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+              <div><div class="stat-val" id="r-focus">-</div><div class="stat-label">선택 기간 평균 집중도</div><div class="stat-badge green" id="r-focus-badge">-</div></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div>
+              <div><div class="stat-val" id="r-drowsy-total">-</div><div class="stat-label">졸음 확정 누적 건수</div><div class="stat-badge red" id="r-drowsy-badge">관리 요망</div></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-icon orange" style="background:#fff7ed;"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" width="24" height="24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
+              <div><div class="stat-val" id="r-absent-rate">-</div><div class="stat-label">평균 자리 이탈률</div><div class="stat-badge orange" id="r-absent-badge">관리 요망</div></div>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-header-row"><div><div class="card-title">시간대별 평균 누적 집중도</div><div class="card-subtitle">해당 기간 동안의 전체 수업 패턴 분석</div></div><div class="chart-legend"><span class="legend-dot orange"></span><span>평균 집중도</span></div></div>
-            <div class="chart-wrap"><svg id="report-chart" viewBox="0 0 1000 300" preserveAspectRatio="none" class="chart-svg"><defs><linearGradient id="reportGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.15"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs></svg></div>
+
+          <!-- ★ 차트 2컬럼: 시간대별(오전/오후) | 기간별 추이 -->
+          <div class="report-chart-grid">
+            <!-- 왼쪽: 오전/오후 집중도 카드 1개 -->
+            <div class="card">
+              <div class="card-header-row" style="margin-bottom:4px;">
+                <div>
+                  <div class="card-title">시간대별 평균 집중도</div>
+                  <div class="card-subtitle">점심시간(12~13시) 제외 | 09:00 ~ 18:00</div>
+                </div>
+                <div class="chart-legend">
+                  <span class="legend-dot orange"></span><span>집중도</span>
+                </div>
+              </div>
+              <!-- 오전/오후 그래프 나란히 -->
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <!-- 오전 -->
+                <div>
+                  <div style="font-size:11px;font-weight:700;color:#2563eb;margin-bottom:6px;padding:4px 10px;background:#eff6ff;border-radius:6px;display:inline-block;">☀️ 오전 (09:00~12:00)</div>
+                  <div style="height:160px;">
+                    <svg id="report-chart-am" viewBox="0 0 400 160" preserveAspectRatio="none" style="width:100%;height:100%;overflow:visible;">
+                      <defs><linearGradient id="reportGradAM" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs>
+                    </svg>
+                  </div>
+                </div>
+                <!-- 오후 -->
+                <div>
+                  <div style="font-size:11px;font-weight:700;color:#ea580c;margin-bottom:6px;padding:4px 10px;background:#fff7ed;border-radius:6px;display:inline-block;">🌆 오후 (13:00~18:00)</div>
+                  <div style="height:160px;">
+                    <svg id="report-chart-pm" viewBox="0 0 400 160" preserveAspectRatio="none" style="width:100%;height:100%;overflow:visible;">
+                      <defs><linearGradient id="reportGradPM" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <!-- 오전/오후 비교 뱃지 -->
+              <div id="report-ampm-insight" style="display:flex;gap:10px;"></div>
+            </div>
+
+            <!-- 오른쪽: 부트캠프 기간별 추이 -->
+            <div class="card">
+              <div class="card-header-row">
+                <div>
+                  <div class="card-title">부트캠프 기간별 집중도 추이</div>
+                  <div class="card-subtitle">수업 회차별 전체 평균 집중도 변화</div>
+                </div>
+                <div class="chart-legend">
+                  <span class="legend-dot indigo"></span><span>기간 집중도</span>
+                </div>
+              </div>
+              <div class="chart-wrap" style="height:220px;">
+                <svg id="trend-chart" viewBox="0 0 1000 260" preserveAspectRatio="none" class="chart-svg">
+                  <defs><linearGradient id="trendGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#6366f1" stop-opacity="0.12"/><stop offset="100%" stop-color="#6366f1" stop-opacity="0"/></linearGradient></defs>
+                </svg>
+              </div>
+              <div id="trend-insight" style="margin-top:12px;"></div>
+            </div>
           </div>
+
+          <!-- 기존 인사이트 2컬럼 -->
           <div class="two-col-grid">
-            <div class="card"><div class="card-title" style="color:#f97316;display:flex;align-items:center;gap:6px;margin-bottom:16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>누적 주의 구간 도출</div><div class="insight-item"><div class="insight-dot orange"></div><div><div class="insight-title">고질적인 식후 집중도 저하</div><div class="insight-desc">조회 기간 내내 13:00 구간의 평균 집중도가 50%를 밑돕니다. 커리큘럼 조정을 권장합니다.</div></div></div></div>
-            <div class="card"><div class="card-title" style="color:#FF7B00;display:flex;align-items:center;gap:6px;margin-bottom:16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>장기 운영 인사이트</div><div class="insight-item"><div class="insight-dot orange"></div><div><div class="insight-title">안정적인 출석 유지율</div><div class="insight-desc">과정 초반 대비 출석률 저하가 발생하지 않았습니다. 우수한 관리 상태입니다.</div></div></div></div>
+            <div class="card"><div class="card-title" style="color:#f97316;display:flex;align-items:center;gap:6px;margin-bottom:16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>누적 주의 구간 도출</div><div id="report-time-insight"><div class="insight-item"><div class="insight-dot orange"></div><div><div class="insight-title">고질적인 식후 집중도 저하</div><div class="insight-desc">조회 기간 내내 13:00 이후 구간의 평균 집중도가 낮습니다. 오후 실습 위주 커리큘럼을 권장합니다.</div></div></div></div></div>
+            <div class="card"><div class="card-title" style="color:#FF7B00;display:flex;align-items:center;gap:6px;margin-bottom:16px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>장기 운영 인사이트</div><div id="report-trend-insight"><div class="insight-item"><div class="insight-dot orange"></div><div><div class="insight-title">안정적인 출석 유지율</div><div class="insight-desc">과정 초반 대비 출석률 저하가 발생하지 않았습니다. 우수한 관리 상태입니다.</div></div></div></div></div>
           </div>
-          <div class="card"><div class="card-title" style="margin-bottom:6px;">누적 집중 관리 요망 학생 TOP 5</div><div class="card-subtitle" style="margin-bottom:16px;">* 선택된 기간 내에 경고 누적 횟수가 가장 많은 학생입니다. 1:1 면담을 권장합니다.</div><div id="top5-list"></div></div>
+
+          <!-- ★ 수강 이탈 위험군 섹션 (기존 TOP5 대체) -->
           <div class="card">
-            <div class="card-header-row" style="margin-bottom:16px;"><div class="card-title">수업 기록</div></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
+              <div>
+                <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:16px;">🚨</span> 수강 이탈 위험군
+                  <span style="font-size:10px;font-weight:600;color:#ef4444;background:#fee2e2;padding:2px 8px;border-radius:4px;">복합 지표 기반 자동 감지</span>
+                </div>
+                <div class="card-subtitle" style="margin-top:4px;">결석률 + 집중도 하락 추세를 복합 분석하여 개입이 필요한 수강생을 자동으로 식별합니다.</div>
+              </div>
+            </div>
+            <!-- 위험군 판정 기준 -->
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+              <span style="font-size:11px;padding:4px 10px;background:#fee2e2;color:#dc2626;border-radius:6px;font-weight:600;">🔴 고위험 — 결석 3회↑ + 집중도 50% 미만</span>
+              <span style="font-size:11px;padding:4px 10px;background:#ffedd5;color:#c2410c;border-radius:6px;font-weight:600;">🟠 주의 — 결석 2회↑ 또는 집중도 하락 추세</span>
+              <span style="font-size:11px;padding:4px 10px;background:#fef9c3;color:#92400e;border-radius:6px;font-weight:600;">🟡 관찰 — 집중도 평균 이하 지속</span>
+            </div>
+            <div id="risk-student-list"></div>
+          </div>
+
+          <div class="card"><div class="card-title" style="margin-bottom:6px;">수업 기록</div><div class="card-subtitle" style="margin-bottom:16px;">기간 내 전체 수업 이력 및 집중도 데이터</div>
             <div class="session-table-head"><span>날짜</span><span>수업 정보</span><span class="align-center">평균 집중도</span><span class="align-center">경고</span><span>집중도 바</span></div>
             <div id="session-list"><div class="empty-msg">세션 기록이 없습니다</div></div>
           </div>
@@ -344,6 +577,19 @@
     </div><!-- /view-container -->
   </main>
 </div><!-- /admin-layout -->
+
+<!-- 삭제 확인 모달 -->
+<div id="delete-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:28px 32px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.15);text-align:center;">
+    <div style="font-size:36px;margin-bottom:12px;">🗑️</div>
+    <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:8px;" id="delete-modal-title">수업 기록 삭제</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:24px;line-height:1.6;" id="delete-modal-desc">이 수업 기록을 삭제할까요?<br>삭제된 데이터는 복구할 수 없습니다.</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeDeleteModal()" style="flex:1;padding:10px;background:#f3f4f6;border:none;border-radius:8px;font-size:13px;font-weight:600;color:#6b7280;cursor:pointer;">취소</button>
+      <button id="delete-modal-confirm" style="flex:1;padding:10px;background:#ef4444;border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer;">삭제</button>
+    </div>
+  </div>
+</div>
 
 <script src="js/common.js"></script>
 <script src="js/admin.js"></script>

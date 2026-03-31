@@ -39,6 +39,7 @@ let captionClearTimer = null;
 let captionRecognition = null;
 let captionRecognitionRunning = false;
 let lastCaptionSentText = '';
+window.dailyCall = null;
 
 const participantVideoMap = {};
 
@@ -405,7 +406,8 @@ function dismissStretchPopup() {
 async function acceptStretch() {
   document.getElementById('stretch-popup')?.remove();
   try {
-    await fetch(`${BACKEND_URL}/api/stretch`, { method: 'POST' });
+    const res = await fetch(`${BACKEND_URL}/api/stretch`, { method: 'POST' });
+    if (!res.ok) throw new Error(`stretch failed: ${res.status}`);
   } catch {
     if (ws && ws.readyState === WebSocket.OPEN)
       ws.send(JSON.stringify({ type: 'stretch_start' }));
@@ -487,7 +489,8 @@ async function startBreak() {
   document.getElementById('break-popup')?.remove();
 
   try {
-    await fetch(`${BACKEND_URL}/api/break/start?duration=${seconds}`, { method: 'POST' });
+    const res = await fetch(`${BACKEND_URL}/api/break/start?duration=${seconds}`, { method: 'POST' });
+    if (!res.ok) throw new Error(`break start failed: ${res.status}`);
   } catch {
     if (ws && ws.readyState === WebSocket.OPEN)
       ws.send(JSON.stringify({ type: 'break_start', duration: seconds }));
@@ -543,7 +546,8 @@ async function endBreakEarly() {
   clearInterval(breakTimerInterval);
   document.getElementById('break-main-overlay')?.remove();
   try {
-    await fetch(`${BACKEND_URL}/api/break/end`, { method: 'POST' });
+    const res = await fetch(`${BACKEND_URL}/api/break/end`, { method: 'POST' });
+    if (!res.ok) throw new Error(`break end failed: ${res.status}`);
   } catch {
     if (ws && ws.readyState === WebSocket.OPEN)
       ws.send(JSON.stringify({ type: 'break_end' }));
@@ -554,7 +558,8 @@ async function endBreakEarly() {
 async function endBreak() {
   document.getElementById('break-main-overlay')?.remove();
   try {
-    await fetch(`${BACKEND_URL}/api/break/end`, { method: 'POST' });
+    const res = await fetch(`${BACKEND_URL}/api/break/end`, { method: 'POST' });
+    if (!res.ok) throw new Error(`break end failed: ${res.status}`);
   } catch {
     if (ws && ws.readyState === WebSocket.OPEN)
       ws.send(JSON.stringify({ type: 'break_end' }));
@@ -659,12 +664,21 @@ async function createRoom() {
 
 function _applyRoomCode(code) {
   currentRoomCode = code;
+  // 과정 코드 표시란에는 실제 코드 유지
   document.getElementById('rcd-code-text').textContent       = code;
   document.getElementById('room-code-display').style.display = 'flex';
   document.getElementById('create-room-btn').style.display   = 'none';
   sessionStorage.setItem('roomCode', code);
+  // 헤더 왼쪽: 멋쟁이사자처럼 · 과정명 날짜
+  const courseName = sessionStorage.getItem('courseName') || '';
+  const today = new Date();
+  const dateLabel = `${today.getMonth()+1}/${today.getDate()}`;
   const classEl = document.getElementById('inst-class-label');
-  if (classEl) classEl.textContent = `멋쟁이사자처럼 · ${code}`;
+  if (classEl) {
+    classEl.textContent = courseName
+      ? `멋쟁이사자처럼 · ${courseName} ${dateLabel}`
+      : `멋쟁이사자처럼 · ${code}`;
+  }
   connectCaptionTextWs();
 }
 
@@ -683,16 +697,34 @@ function copyRoomCode() {
 async function joinDailyRoom(userName, token, roomUrl) {
   try {
     dailyCall = DailyIframe.createCallObject({ audioSource: true, videoSource: true });
+    window.dailyCall = dailyCall;
     await dailyCall.join({ url: roomUrl, token });
     dailyCall
+      .on('joined-meeting',      e => console.log('강사 joined-meeting', e))
       .on('started-camera',     () => console.log('카메라 시작'))
       .on('track-started',      handleTrackStarted)
       .on('track-stopped',      handleTrackStopped)
       .on('participant-joined', onParticipantJoined)
-      .on('participant-left',   onParticipantLeft);
+      .on('participant-left',   onParticipantLeft)
+      .on('participant-updated', e => console.log('강사 participant-updated', e.participant?.user_name, e.participant?.tracks))
+      .on('error', e => console.warn('강사 Daily error', e));
     console.log('Daily.co 강사 입장 완료');
   } catch (e) {
     console.warn('Daily.co 연결 실패:', e.message);
+  }
+}
+
+async function reconnectDailyRoomIfNeeded(userName, roomCode) {
+  if (!roomCode || dailyCall) return;
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/room-token?user_name=${encodeURIComponent(userName)}&room_code=${encodeURIComponent(roomCode)}&role=instructor`
+    );
+    if (!res.ok) throw new Error('강사 토큰 재발급 실패');
+    const { token, room_url } = await res.json();
+    await joinDailyRoom(userName, token, room_url);
+  } catch (e) {
+    console.warn('강사 Daily 재입장 실패:', e.message);
   }
 }
 
@@ -718,6 +750,7 @@ function onParticipantLeft(e) {
 
 function handleTrackStarted(e) {
   if (e.participant.local) return;
+  console.log('강사 track-started', e.participant.user_name, { kind: e.track.kind, screen: e.participant.screen, tracks: e.participant.tracks });
   if (e.track.kind === 'video' && e.participant.screen) {
     const sv = document.getElementById('screen-video');
     if (sv) { sv.srcObject = new MediaStream([e.track]); sv.style.display = 'block'; document.getElementById('inst-video').style.display = 'none'; }
@@ -837,7 +870,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const roomCode   = sessionStorage.getItem('roomCode')   || '';
   const courseName = sessionStorage.getItem('courseName') || '';
 
-  // 과정명 헤더에 고정 표시 (항상 입력한 과정명 유지)
+  // 과정명 헤더에 고정 표시
   const classLabel = document.getElementById('inst-class-label');
   if (classLabel) {
     classLabel.textContent = courseName || '멋쟁이사자처럼';
@@ -846,14 +879,37 @@ window.addEventListener('DOMContentLoaded', () => {
   const avatarEl = document.getElementById('inst-avatar-text');
   if (avatarEl) avatarEl.textContent = userName.charAt(0);
 
-  if (roomCode) _applyRoomCode(roomCode);
+  if (roomCode) {
+    // sessionStorage에 코드 있으면 바로 적용
+    _applyRoomCode(roomCode);
+  } else if (courseName) {
+    // 코드 없어도 과정명 있으면 자동으로 백엔드에서 오늘 세션 조회
+    autoLoadRoomCode(userName, courseName);
+  }
 
   startCamera();
   startTimer();
   connectWS();
   connectCaptionViewer();
   startRotation();
+  if (roomCode) reconnectDailyRoomIfNeeded(userName, roomCode);
 });
+
+// 오늘 날짜 + 과정명으로 기존 세션 자동 조회
+async function autoLoadRoomCode(userName, courseName) {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/create-room?instructor_name=${encodeURIComponent(userName)}&course_name=${encodeURIComponent(courseName)}`,
+      { method: 'POST' }
+    );
+    if (!res.ok) return;
+    const { room_code, token, room_url } = await res.json();
+    _applyRoomCode(room_code);
+    await joinDailyRoom(userName, token, room_url);
+  } catch(e) {
+    console.warn('[강사] 자동 세션 로드 실패:', e.message);
+  }
+}
 
 // ── 강사 채팅 ─────────────────────────────────
 function sendInstructorChat() {
