@@ -29,6 +29,7 @@ let rotInterval = null;
 let elapsed = 0;
 let timerInterval;
 let micOn = true, camOn = true, screenOn = false;
+const remoteAudioEls = {};
 
 let dailyCall = null;
 let ws = null;
@@ -221,7 +222,6 @@ function connectWS() {
       }
       updateStats();
       renderStudentGrid();
-      checkStretchTrigger();
     };
     ws.onclose = () => setTimeout(connectWS, 3000);
     ws.onerror = (e) => console.warn('강사 WS 오류:', e);
@@ -612,6 +612,7 @@ async function leaveRoom() {
   stopCaptionStreaming();
   if (captionViewerWs) captionViewerWs.close();
   localMediaStream?.getTracks().forEach(t => t.stop());
+  Object.values(remoteAudioEls).forEach(el => el.remove());
   clearInterval(timerInterval);
   clearInterval(rotInterval);
   clearInterval(breakTimerInterval);
@@ -650,12 +651,19 @@ function showLeavePopup() {
       </div>
     </div>`;
   document.body.appendChild(popup);
+  const popupTitle = popup.querySelector('div[style*="font-size:1.2rem"]');
+  if (popupTitle) popupTitle.textContent = '수업이 종료되었습니다';
+  const popupDesc = popup.querySelector('div[style*="font-size:0.95rem"]');
+  if (popupDesc) popupDesc.textContent = '관리자 대시보드로 이동하시겠습니까?';
+  const popupButtons = popup.querySelectorAll('button');
+  if (popupButtons[0]) popupButtons[0].textContent = '나중에';
+  if (popupButtons[1]) popupButtons[1].textContent = '🛡️ 대시보드 이동';
 }
 
-function confirmLeave(goReport) {
+function confirmLeave(goDashboard) {
   document.getElementById('leave-popup')?.remove();
-  if (goReport) {
-    goTo('report');
+  if (goDashboard) {
+    goTo('admin');
   } else {
     goTo('login');
   }
@@ -717,6 +725,7 @@ async function joinDailyRoom(userName, token, roomUrl) {
     dailyCall = DailyIframe.createCallObject({ audioSource: true, videoSource: true });
     window.dailyCall = dailyCall;
     await dailyCall.join({ url: roomUrl, token });
+    try { await dailyCall.setLocalAudio(micOn); } catch {}
     dailyCall
       .on('joined-meeting',      e => console.log('강사 joined-meeting', e))
       .on('started-camera',     () => console.log('카메라 시작'))
@@ -726,6 +735,23 @@ async function joinDailyRoom(userName, token, roomUrl) {
       .on('participant-left',   onParticipantLeft)
       .on('participant-updated', e => console.log('강사 participant-updated', e.participant?.user_name, e.participant?.tracks))
       .on('error', e => console.warn('강사 Daily error', e));
+
+    const existing = dailyCall.participants();
+    Object.values(existing).forEach(p => {
+      if (p.local) return;
+      const name = p.user_name || '';
+      const videoTrack = p.tracks?.video?.track;
+      const audioTrack = p.tracks?.audio?.track;
+      if (!students[name]) {
+        students[name] = { student_id: name, name, status: 'FOCUSED', drowsy_cnt: 0, yawn_cnt: 0, head_cnt: 0 };
+      }
+      if (videoTrack) {
+        participantVideoMap[name] = videoTrack;
+        attachStudentVideo(name, videoTrack);
+      }
+      if (audioTrack) attachRemoteAudio(p.session_id, audioTrack);
+    });
+
     console.log('Daily.co 강사 입장 완료');
   } catch (e) {
     console.warn('Daily.co 연결 실패:', e.message);
@@ -762,6 +788,7 @@ function onParticipantLeft(e) {
   console.log('학생 퇴장:', name);
   delete students[name];
   delete participantVideoMap[name];
+  removeRemoteAudio(e.participant.session_id);
   updateStats();
   renderStudentGrid();
 }
@@ -769,6 +796,10 @@ function onParticipantLeft(e) {
 function handleTrackStarted(e) {
   if (e.participant.local) return;
   console.log('강사 track-started', e.participant.user_name, { kind: e.track.kind, screen: e.participant.screen, tracks: e.participant.tracks });
+  if (e.track.kind === 'audio') {
+    attachRemoteAudio(e.participant.session_id, e.track);
+    return;
+  }
   if (e.track.kind === 'video' && e.participant.screen) {
     const sv = document.getElementById('screen-video');
     if (sv) { sv.srcObject = new MediaStream([e.track]); sv.style.display = 'block'; document.getElementById('inst-video').style.display = 'none'; }
@@ -782,7 +813,33 @@ function handleTrackStarted(e) {
 }
 
 function handleTrackStopped(e) {
+  if (e.track.kind === 'audio') {
+    removeRemoteAudio(e.participant?.session_id);
+    return;
+  }
   if (e.track.kind === 'video' && e.participant?.screen) stopScreenShare();
+}
+
+function attachRemoteAudio(key, track) {
+  if (!track || !key) return;
+  let audio = remoteAudioEls[key];
+  if (!audio) {
+    audio = document.createElement('audio');
+    audio.autoplay = true;
+    audio.playsInline = true;
+    audio.style.display = 'none';
+    remoteAudioEls[key] = audio;
+    document.body.appendChild(audio);
+  }
+  audio.srcObject = new MediaStream([track]);
+}
+
+function removeRemoteAudio(key) {
+  const audio = remoteAudioEls[key];
+  if (!audio) return;
+  audio.srcObject = null;
+  audio.remove();
+  delete remoteAudioEls[key];
 }
 
 // ── 화면 공유 ─────────────────────────────────

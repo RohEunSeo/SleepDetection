@@ -105,6 +105,7 @@ const calibCtx = calibCV.getContext('2d');
 
 // ── 런타임 상태값 ────────────────────────────
 let micOn = true, camOn = true;
+const remoteAudioEls = {};
 let elapsed = 0, timerInterval;
 let checkedCount = 0;
 let cameraInstance = null;
@@ -832,6 +833,7 @@ function startTimer() {
 
 function toggleMic() {
   micOn = !micOn;
+  if (dailyCall) dailyCall.setLocalAudio(micOn);
   const btn = document.getElementById('mic-btn');
   if (!btn) return;
   btn.querySelector('.icon').textContent = micOn ? '🎙️' : '🔇';
@@ -855,8 +857,31 @@ function leaveRoom() {
   clearInterval(timerInterval);
   videoEl.srcObject?.getTracks().forEach(t => t.stop());
   dailyCall?.leave();
+  Object.values(remoteAudioEls).forEach(el => el.remove());
   if (captionViewerWs) captionViewerWs.close();
   goTo('login');
+}
+
+function attachRemoteAudio(key, track) {
+  if (!track || !key) return;
+  let audio = remoteAudioEls[key];
+  if (!audio) {
+    audio = document.createElement('audio');
+    audio.autoplay = true;
+    audio.playsInline = true;
+    audio.style.display = 'none';
+    remoteAudioEls[key] = audio;
+    document.body.appendChild(audio);
+  }
+  audio.srcObject = new MediaStream([track]);
+}
+
+function removeRemoteAudio(key) {
+  const audio = remoteAudioEls[key];
+  if (!audio) return;
+  audio.srcObject = null;
+  audio.remove();
+  delete remoteAudioEls[key];
 }
 
 // ── 온보딩 및 수업 입장 ──────────────────────
@@ -916,18 +941,25 @@ async function joinDailyRoom(userName, role) {
     if (!res.ok) throw new Error('토큰 발급 실패');
     const { token, room_url } = await res.json();
 
-    dailyCall = DailyIframe.createCallObject({ audioSource: false, videoSource: true });
+    dailyCall = DailyIframe.createCallObject({ audioSource: true, videoSource: true });
     window.dailyCall = dailyCall;
     await dailyCall.join({ url: room_url, token });
     try { await dailyCall.setLocalVideo(true); } catch {}
+    try { await dailyCall.setLocalAudio(micOn); } catch {}
 
     dailyCall
       .on('joined-meeting', e => console.log('학생 joined-meeting', e))
       .on('participant-updated', e => console.log('학생 participant-updated', e.participant?.user_name, e.participant?.local, e.participant?.owner, e.participant?.tracks))
       .on('participant-joined', onParticipantJoined)
-      .on('participant-left', e => removePeerTile(e.participant.session_id))
+      .on('participant-left', e => {
+        removePeerTile(e.participant.session_id);
+        removeRemoteAudio(e.participant.session_id);
+      })
       .on('track-started', onTrackStarted)
-      .on('track-stopped', e => console.log('학생 track-stopped', e.participant?.user_name, e.track?.kind))
+      .on('track-stopped', e => {
+        console.log('학생 track-stopped', e.participant?.user_name, e.track?.kind);
+        if (e.track?.kind === 'audio') removeRemoteAudio(e.participant?.session_id);
+      })
       .on('error', e => console.warn('학생 Daily error', e));
 
     const existing = dailyCall.participants();
@@ -939,6 +971,7 @@ async function joinDailyRoom(userName, role) {
         addPeerTile(p.session_id, p.user_name || '참여자');
       }
       const videoTrack = p.tracks?.video?.track;
+      const audioTrack = p.tracks?.audio?.track;
       if (videoTrack) {
         if (p.owner) {
           const v = document.getElementById('instructor-video');
@@ -952,6 +985,7 @@ async function joinDailyRoom(userName, role) {
           setPeerTrack(p.session_id, videoTrack);
         }
       }
+      if (audioTrack) attachRemoteAudio(p.session_id, audioTrack);
     });
 
     console.log('Daily.co 입장 완료');
@@ -979,9 +1013,14 @@ function onParticipantUpdated(e) {
 
 function onTrackStarted(e) {
   if (e.participant.local) return;
-  if (e.track.kind !== 'video') return;
   const sid = e.participant.session_id;
   console.log('학생 track-started', e.participant.user_name, { owner: e.participant.owner, sid, persistentTrack: e.participant.tracks?.video?.persistentTrack });
+
+  if (e.track.kind === 'audio') {
+    attachRemoteAudio(sid, e.track);
+    return;
+  }
+  if (e.track.kind !== 'video') return;
 
   if (e.participant.owner) {
     const instVideo = document.getElementById('instructor-video');
