@@ -107,6 +107,7 @@
       <div class="inst-main-view" id="inst-main-view">
         <video id="inst-video" autoplay muted playsinline></video>
         <video id="screen-video" autoplay playsinline style="display:none; width:100%; height:100%; object-fit:contain;"></video>
+        <button class="caption-toggle-btn" id="inst-caption-toggle" onclick="toggleInstructorCaption()">자막 끄기</button>
         <div id="inst-live-caption" class="live-caption" aria-live="polite"></div>
         <div class="inst-cam-off" id="inst-cam-off" style="display:none">
           <div class="inst-avatar" id="inst-avatar-text">강</div>
@@ -144,7 +145,7 @@
           </div>
           <div class="status-count-item">
             <div class="status-count-val" id="cnt-distracted" style="color:#eab308">0</div>
-            <div class="status-count-label">주의산만</div>
+            <div class="status-count-label">시선 이탈</div>
           </div>
           <div class="status-count-item">
             <div class="status-count-val" id="cnt-warning" style="color:#f97316">0</div>
