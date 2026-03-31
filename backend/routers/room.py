@@ -22,10 +22,12 @@ async def create_room(
     if not DAILY_API_KEY:
         raise HTTPException(status_code=500, detail="DAILY_API_KEY 미설정")
 
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
     from session_store import supabase as _supa
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    # KST 기준 오늘 날짜 (Railway UTC 서버에서도 한국 날짜 보장)
+    KST = timezone(timedelta(hours=9))
+    today = datetime.now(KST).strftime("%Y-%m-%d")
 
     # ── 1. 오늘 날짜 + 같은 과정명 세션 있으면 재사용 (종료됐어도) ──
     if course_name:

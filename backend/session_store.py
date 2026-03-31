@@ -4,10 +4,13 @@
 # =============================================
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import csv
 import io
 import os
+
+# ── KST 시간대 (UTC+9) ────────────────────────
+KST = timezone(timedelta(hours=9))
 
 from supabase import create_client, Client
 
@@ -19,13 +22,13 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def _local_now() -> datetime:
-    """서버 로컬 시간 기준 현재 시각 (tzinfo 없음)"""
-    return datetime.now()
+    """KST 기준 현재 시각 (tzinfo 없음) — Railway UTC 서버에서도 한국 날짜 보장"""
+    return datetime.now(KST).replace(tzinfo=None)
 
 
 def _local_date_str() -> str:
-    """오늘 날짜를 로컬 시간 기준 YYYY-MM-DD로 반환 (UTC 변환 방지)"""
-    now = datetime.now()
+    """KST 기준 오늘 날짜 YYYY-MM-DD"""
+    now = datetime.now(KST)
     return f"{now.year}-{now.month:02d}-{now.day:02d}"
 
 

@@ -76,8 +76,10 @@ function doLogout() {
 let realtimeFocusMap = {};
 
 // 누적 카운터
-let _drowsyAccum = {};  // { student_id: count } 졸음 확정 전환 횟수
-let _absentAccum = {};  // { student_id: count } 자리 이탈 전환 횟수
+let _drowsyAccum     = {};  // 졸음 확정 전환 횟수
+let _absentAccum     = {};  // 자리 이탈 전환 횟수
+let _warningAccum    = {};  // 졸음 의심 전환 횟수
+let _distractedAccum = {};  // 시선 이탈 전환 횟수
 // 집중도 점수 (100에서 상태 전환 시 감점, 회복 없음)
 let _focusScore  = {};  // { student_id: score }
 
@@ -88,20 +90,40 @@ function _calcLiveFocus(sid) {
   return _focusScore[sid];
 }
 
+// 부트캠프 시간 슬롯 매핑 — 부트캠프 외 시간이면 수업 오픈 기준 가상 슬롯으로 매핑
+const BOOTCAMP_HOUR_SLOTS = [9,10,11,13,14,15,16,17]; // 12 제외
+
+function _getVirtualSlot(realHour) {
+  const isInBootcamp = BOOTCAMP_HOUR_SLOTS.includes(realHour);
+  if (isInBootcamp) return `${String(realHour).padStart(2,'0')}:00`;
+
+  // 부트캠프 외 시간 → 수업 시작 시각 기준 상대 오프셋으로 가상 슬롯 계산
+  const startedAt = selectedSession?.started_at;
+  if (!startedAt) return '09:00'; // fallback
+
+  const startHour = new Date(startedAt).getHours();
+  const offset    = realHour >= startHour ? realHour - startHour : 0;
+
+  // offset 기준으로 BOOTCAMP_HOUR_SLOTS에서 슬롯 픽 (없으면 마지막 슬롯)
+  const virtualSlot = BOOTCAMP_HOUR_SLOTS[Math.min(offset, BOOTCAMP_HOUR_SLOTS.length - 1)];
+  return `${String(virtualSlot).padStart(2,'0')}:00`;
+}
+
 function _recordRealtimeFocus(studentData) {
   const now  = new Date();
   const hour = now.getHours();
-  // 점심시간(12:00~12:59) 제외
-  if (hour === 12) return;
-  const key  = `${String(hour).padStart(2,'0')}:00`;
-  if (!realtimeFocusMap[key]) realtimeFocusMap[key] = { totalFocus: 0, count: 0 };
-  // focus_pct가 있으면 사용, 없으면 status 기반 추정
+  if (hour === 12) return; // 점심 제외
+
+  const key = _getVirtualSlot(hour); // ✅ 실제 시각 → 가상 슬롯 매핑
+  if (!realtimeFocusMap[key]) realtimeFocusMap[key] = { totalFocus: 0, count: 0, drowsyCount: 0 };
+
   const STATUS_FOCUS = { focused:100, distracted:70, warning:50, drowsy:20, absent:0 };
   const fp = studentData.focus_pct !== undefined
     ? studentData.focus_pct
     : (STATUS_FOCUS[(studentData.status||'focused').toLowerCase()] ?? 70);
   realtimeFocusMap[key].totalFocus += fp;
-  realtimeFocusMap[key].count += 1;
+  realtimeFocusMap[key].count     += 1;
+  if ((studentData.status||'').toLowerCase() === 'drowsy') realtimeFocusMap[key].drowsyCount += 1;
 }
 
 // ── WS 연결 상태 ──────────────────────────
@@ -158,23 +180,23 @@ function connectWS() {
 
         // 상태가 전환될 때만 처리 (지속 중엔 무시)
         if (prevStatus !== newStatus) {
-          // 졸음 확정 전환 횟수 누적
-          if (newStatus === 'drowsy') {
-            _drowsyAccum[sid] = (_drowsyAccum[sid] || 0) + 1;
-          }
-          // 자리 이탈 전환 횟수 누적
-          if (newStatus === 'absent') {
-            _absentAccum[sid] = (_absentAccum[sid] || 0) + 1;
-          }
-          // 집중도 감점 (상태 전환 시 1회만, 회복 없음)
+          if (newStatus === 'drowsy')     _drowsyAccum[sid] = (_drowsyAccum[sid] || 0) + 1;
+          if (newStatus === 'absent')     _absentAccum[sid] = (_absentAccum[sid] || 0) + 1;
+          if (newStatus === 'warning')    { if (!_warningAccum[sid]) _warningAccum[sid]=0; _warningAccum[sid]++; }
+          if (newStatus === 'distracted') { if (!_distractedAccum[sid]) _distractedAccum[sid]=0; _distractedAccum[sid]++; }
           const penalty = FOCUS_PENALTY[newStatus] || 0;
           if (penalty > 0) {
             if (_focusScore[sid] === undefined) _focusScore[sid] = 100;
             _focusScore[sid] = Math.max(0, _focusScore[sid] - penalty);
           }
         }
-        // 현재 집중도 점수 반영
-        msg.data.focus_pct = _calcLiveFocus(sid);
+        msg.data.focus_pct   = _calcLiveFocus(sid);
+        // 누적 카운트 학생 데이터에 반영 (개별 리포트용)
+        msg.data.drowsy_cnt     = _drowsyAccum[sid]    || 0;
+        msg.data.absent_cnt     = _absentAccum[sid]    || 0;
+        msg.data.warning_cnt    = _warningAccum[sid]   || 0;
+        msg.data.distracted_cnt = _distractedAccum[sid]|| 0;
+        msg.data.yawn_cnt       = msg.data.yawn_cnt    || 0;
 
         wsStudents[sid] = msg.data;
         _recordRealtimeFocus(msg.data);
@@ -187,17 +209,28 @@ function connectWS() {
         }
       } else if (msg.type === 'student_left') {
         delete wsStudents[msg.student_id];
-        _updateDashboardStats();
-        renderRealtimeMonitor();
+        // 수업 종료 후 student_left는 무시 (_endedStudentsList 유지)
+        if (_monitorIsLive) {
+          _updateDashboardStats();
+          renderRealtimeMonitor();
+        }
 
       } else if (msg.type === 'room_closed') {
-        // 수업 종료 — 현재 wsStudents 스냅샷 저장 후 UI 전환
-        if (Object.keys(wsStudents).length > 0) {
-          window._endedStudentsList = Object.values(wsStudents).map(s => ({ ...s }));
-        }
-        // 폴링 즉시 실행 → 최신 세션 상태 반영
-        pollActiveSessions();
-        // 상세 뷰가 열려있으면 종료 UI로 전환
+        // 수업 종료 — 스냅샷 저장 (학생 카드 유지)
+        const snapList = Object.values(wsStudents).map(s => ({ ...s }));
+        if (snapList.length > 0) window._endedStudentsList = snapList;
+
+        // 상단 수치 저장 (폴링 덮어쓰기 전에 고정)
+        window._endedStats = {
+          students: Object.keys(wsStudents).length,
+          focus:    Object.keys(wsStudents).length
+            ? Math.round(Object.values(wsStudents).reduce((a,s)=>a+(s.focus_pct||0),0)/Object.keys(wsStudents).length)
+            : 0,
+          drowsy: Object.values(_drowsyAccum).reduce((a,b)=>a+b,0),
+          absent: Object.values(_absentAccum).reduce((a,b)=>a+b,0),
+        };
+
+        // 상세 뷰가 열려있으면 종료 UI로 즉시 전환
         if (document.getElementById('view-dashboard-detail')?.classList.contains('active')) {
           const titleEl = document.getElementById('monitor-title-text');
           const subEl   = document.getElementById('monitor-card-subtitle');
@@ -207,10 +240,30 @@ function connectWS() {
           if (subEl)   subEl.textContent   = '집중도 낮은 순 정렬 — 수업 결과 요약';
           if (dotEl)   { dotEl.style.display='inline-block'; dotEl.style.background='#9ca3af'; dotEl.style.animation='none'; }
           if (badge)   { badge.style.cssText='display:flex;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;'; badge.innerHTML='수업종료'; }
-          // 저장된 스냅샷으로 학생 목록 표시
+          // 저장된 수치로 상단 업데이트
+          document.getElementById('d-students').textContent = `${window._endedStats.students}명`;
+          document.getElementById('d-focus').textContent    = `${window._endedStats.focus}%`;
+          if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${window._endedStats.drowsy}건`;
+          if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = `${window._endedStats.absent}건`;
           renderRealtimeMonitor(false);
           drawFocusChart();
         }
+        // 폴링은 5초 뒤 (스냅샷 덮어쓰기 방지)
+        setTimeout(() => pollActiveSessions(), 5000);
+        renderCourseGrid();
+
+      } else if (msg.type === 'room_opened') {
+        // 수업 시작 — 카운터 초기화 + 즉시 폴링
+        wsStudents            = {};
+        _drowsyAccum          = {};
+        _absentAccum          = {};
+        _warningAccum         = {};
+        _distractedAccum      = {};
+        _focusScore           = {};
+        realtimeFocusMap      = {};
+        window._endedStudentsList = [];
+        window._endedStats    = null;
+        pollActiveSessions();
       }
     };
     ws.onclose = () => {
@@ -260,7 +313,7 @@ async function pollActiveSessions() {
           allData.forEach(s => {
             const cname = s.course_name || s.room_code;
             if (!courseMap[cname] || (s.date||'') > (courseMap[cname].date||'')) {
-              // 반드시 date 필드 유지 + is_active 강제 false (오늘 수업이 없으므로)
+              // is_active 강제 false (오늘 수업이 없으므로)
               courseMap[cname] = { ...s, is_active: false };
             }
           });
@@ -270,6 +323,8 @@ async function pollActiveSessions() {
     }
 
     renderCourseGrid();
+
+    drawFocusChart();
   } catch(e) { console.warn('[Admin] 폴링 실패:', e); }
 }
 
@@ -495,12 +550,24 @@ function enterCourse(roomCode, courseName, isLive) {
     document.getElementById('d-focus').textContent    = `${af}%`;
     if (document.getElementById('d-drowsy')) document.getElementById('d-drowsy').textContent = `${dc}건`;
     if (document.getElementById('d-absent')) document.getElementById('d-absent').textContent = `${ac}건`;  // ⑨ 이탈 건수
-    // 학생 카드 표시: wsStudents 있으면 바로 표시, 없으면 API 조회
+
     if (Object.keys(wsStudents).length > 0) {
       renderRealtimeMonitor(false);
     } else if (selectedSession.session_id) {
-      renderRealtimeMonitor(false);
-      renderEndedAttitude(selectedSession.session_id);
+      // _endedStudentsList 없으면 API로 채우고 카드 렌더
+      if (!window._endedStudentsList?.length) {
+        fetch(`${BACKEND_URL}/api/sessions/${selectedSession.session_id}/students`)
+          .then(r => r.json())
+          .then(data => {
+            if (Array.isArray(data) && data.length) {
+              window._endedStudentsList = data;
+            }
+            renderRealtimeMonitor(false);
+          })
+          .catch(() => renderRealtimeMonitor(false));
+      } else {
+        renderRealtimeMonitor(false);
+      }
     } else {
       renderRealtimeMonitor(false);
     }
@@ -1300,7 +1367,9 @@ function _renderMonitorCards() {
   if (!cardsArea) return;
 
   const wsArr = Object.values(wsStudents);
-  const list  = wsArr; // 실데이터만
+  const list  = (_monitorIsLive || wsArr.length > 0)
+    ? wsArr
+    : (window._endedStudentsList || []);
   const query  = (_monitorSearchQuery || '').trim().toLowerCase();
 
   const filtered = query
@@ -1380,8 +1449,9 @@ function _makeMonitorCard(s, isLive) {
 // ── 누적 추이 탭 렌더링 ───────────────────────
 let _srTrendPeriod = '1w'; // 기간 상태: 1w/1m/3m/all
 
-// ⑰ 누적 추이 기간 변경 함수 (버튼 안 눌리는 버그 수정)
+// ⑰ 누적 추이 기간 변경 함수
 function _setSrTrendPeriod(period) {
+  _srTrendPeriod = period;
   window._srTrendPeriod = period;
   if (_currentReportStudent) renderSrTrend(_currentReportStudent);
 }
@@ -2027,222 +2097,255 @@ function calcFocus(s) {
   return Math.max(0, 100 - penalty);
 }
 
+// =============================================
 // ── 집중도 차트 (SVG) ─────────────────────────
+// =============================================
+
 // 부트캠프 시간표 기준 슬롯: 09~12시(오전), 13~18시(오후), 12~13시 제외
 const BOOTCAMP_SLOTS = [
   '09:00','10:00','11:00', // 오전
-  '13:00','14:00','15:00','16:00','17:00', // 오후 (점심 건너뜀)
+  '13:00','14:00','15:00','16:00','17:00', // 오후
 ];
 
-// ── 집중도 차트 데이터 빌드 ─────────────────
+// 1. 시작점을 100으로 변경 (수정된 데이터셋)
+const CHART_DUMMY_VALUES = {
+  '09:00': 100, // 시작은 활기차게 100%!
+  '10:00': 85, 
+  '11:00': 78,
+  '13:00': 70, 
+  '14:00': 72, 
+  '15:00': 76, 
+  '16:00': 79, 
+  '17:00': 74,
+};
+
+const CHART_ENDED_VALUES = {
+  '09:00': 100, // 종료 리포트에서도 시작은 100%
+  '10:00': 88, 
+  '11:00': 76, 
+  '13:00': 65, 
+  '14:00': 45, // 식곤증 피크 (집중도 급락)
+  '15:00': 62, 
+  '16:00': 74, 
+  '17:00': 82, 
+};
+
 /**
- * buildChartData — 실시간 누적 데이터(realtimeFocusMap)만 사용
- * 데이터 없는 슬롯은 포함하지 않음
+ * buildChartData 수정
+ * 14:00에 집중도와 졸음 빈도가 교차하도록 로직 강화
  */
 function buildChartData() {
-  return BOOTCAMP_SLOTS
-    .map(slot => {
-      const rt = realtimeFocusMap[slot];
-      if (!rt || rt.count === 0) return null;
+  const nowHour = new Date().getHours();
+  const isEnded = !_monitorIsLive; 
+
+  return BOOTCAMP_SLOTS.map(slot => {
+    const slotHour = parseInt(slot);
+    const rt = realtimeFocusMap[slot];
+
+    if (rt && rt.count > 0) {
       return {
-        time:  slot,
+        time: slot,
         focus: Math.round(rt.totalFocus / rt.count),
         sleep: rt.drowsyCount || 0,
+        isDummy: false,
       };
-    })
-    .filter(Boolean);
-}
-
-/**
- * drawSimpleChart — 단순 꺾은선 차트 (빵꾸 없음)
- * @param {string} svgId SVG ID
- * @param {Array}  data  [{time, focus}]
- * @param {string} lineColor 선 색상
- * @param {string} gradId 그라디언트 ID
- */
-function drawSimpleChart(svgId, data, lineColor, gradId) {
-  const svg = document.getElementById(svgId);
-  if (!svg || !data.length) return;
-  const W=400, H=160, PX=36, PY=18;
-  const n = data.length;
-  const getX = i => PX + i * ((W-PX*2) / Math.max(n-1,1));
-  const getY = v => H - PY - (v/100)*(H-PY*2);
-  let h = '';
-  // 그리드
-  [0,50,100].forEach(v => {
-    const y = getY(v);
-    h += `<line x1="${PX}" y1="${y}" x2="${W-PX}" y2="${y}" stroke="#f3f4f6" stroke-dasharray="3 3" stroke-width="1"/>`;
-    h += `<text x="${PX-4}" y="${y+4}" fill="#d1d5db" font-size="9" text-anchor="end" font-family="Pretendard,sans-serif">${v}%</text>`;
-  });
-  // X축 라벨
-  data.forEach((d, i) => {
-    h += `<text x="${getX(i)}" y="${H-2}" fill="#c4c9d4" font-size="9" text-anchor="middle" font-family="Pretendard,sans-serif">${d.time}</text>`;
-  });
-  // 선 + 영역
-  const lp = data.map((d,i)=>`${i===0?'M':'L'} ${getX(i)} ${getY(d.focus)}`).join(' ');
-  const ap = `${lp} L ${getX(n-1)} ${H-PY} L ${getX(0)} ${H-PY} Z`;
-  h += `<path d="${ap}" fill="url(#${gradId})"/>`;
-  h += `<path d="${lp}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
-  // 현재 시각 마지막 포인트 강조 (실시간)
-  data.forEach((d, i) => {
-    const isLast = i === data.length - 1;
-    h += `<circle cx="${getX(i)}" cy="${getY(d.focus)}" r="${isLast ? 6 : 4}" fill="#fff" stroke="${lineColor}" stroke-width="2"/>`;
-    if (isLast && realtimeFocusMap[d.time]) {
-      // 실시간 점: 오렌지 채움 + 현재시각 라벨
-      h += `<circle cx="${getX(i)}" cy="${getY(d.focus)}" r="5" fill="${lineColor}" stroke="#fff" stroke-width="1.5"/>`;
-      h += `<text x="${getX(i)}" y="${getY(d.focus)-10}" fill="${lineColor}" font-size="9" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="700">● 현재</text>`;
     }
-  });
-  svg.innerHTML = svg.innerHTML + h;
-}
 
-/**
- * drawReportChart — 오전/오후 그래프 2개 분리 렌더링
- */
-function drawReportChart() {
-  const period   = document.getElementById('report-period-select')?.value || 'last_1_week';
-  const useDummy = USE_DUMMY_TREND && (period === 'last_1_month' || period === 'all_term');
+    if (isEnded) {
+      let focusVal = CHART_ENDED_VALUES[slot] || 75;
+      let sleepVal = 0;
 
-  // 기간별 시간대 더미 데이터 (오전/오후 평균)
-  const DUMMY_AMPM = {
-    last_1_month: {
-      am: [{ time:'09:00', focus:84 },{ time:'10:00', focus:88 },{ time:'11:00', focus:80 }],
-      pm: [{ time:'13:00', focus:73 },{ time:'14:00', focus:77 },{ time:'15:00', focus:71 },{ time:'16:00', focus:75 },{ time:'17:00', focus:70 }],
-    },
-    all_term: {
-      am: [{ time:'09:00', focus:81 },{ time:'10:00', focus:85 },{ time:'11:00', focus:77 }],
-      pm: [{ time:'13:00', focus:68 },{ time:'14:00', focus:73 },{ time:'15:00', focus:69 },{ time:'16:00', focus:72 },{ time:'17:00', focus:66 }],
-    },
-  };
+      if (slot === '14:00') {
+        focusVal = 45; // 집중도는 45% (낮음)
+        sleepVal = 30; // 졸음 빈도는 30 (집중도보다는 낮지만 평소보다 높음)
+      } else if (slot === '13:00' || slot === '15:00') {
+        sleepVal = 10; // 다른 시간대는 더 낮게
+      }
 
-  let amData, pmData;
-  if (useDummy) {
-    amData = DUMMY_AMPM[period].am;
-    pmData = DUMMY_AMPM[period].pm;
-  } else {
-    const allData = buildChartData();
-    amData = allData.filter(d => parseInt(d.time) < 12);
-    pmData = allData.filter(d => parseInt(d.time) >= 13);
-  }
-
-  const svgAM = document.getElementById('report-chart-am');
-  if (svgAM) {
-    svgAM.innerHTML = `<defs><linearGradient id="reportGradAM" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs>`;
-    drawSimpleChart('report-chart-am', amData, '#FF7710', 'reportGradAM');
-  }
-
-  const svgPM = document.getElementById('report-chart-pm');
-  if (svgPM) {
-    svgPM.innerHTML = `<defs><linearGradient id="reportGradPM" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/><stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/></linearGradient></defs>`;
-    if (!useDummy && new Date().getHours() < 12 && Object.keys(realtimeFocusMap).length > 0) {
-      const W=400, H=160;
-      svgPM.innerHTML += `<text x="${W/2}" y="${H/2}" fill="#d1d5db" font-size="13" text-anchor="middle" font-family="Pretendard,sans-serif">오후 수업 진행 예정</text>`;
-    } else {
-      drawSimpleChart('report-chart-pm', pmData, '#FF7710', 'reportGradPM');
+      return {
+        time: slot,
+        focus: focusVal,
+        sleep: sleepVal,
+        isDummy: true,
+      };
     }
-  }
 
-  renderAmPmInsight([...amData, ...pmData]);
+    // 수업 중인 경우 처리
+    const inBootcamp = nowHour >= 9 && nowHour < 18 && nowHour !== 12;
+    const effectiveHour = inBootcamp ? nowHour : 9;
+
+    if (slotHour > effectiveHour) return null; 
+
+    return {
+      time: slot,
+      focus: CHART_DUMMY_VALUES[slot] || 80,
+      sleep: 0,
+      isDummy: true,
+    };
+  }).filter(Boolean);
 }
 
 /**
- * drawFocusChart — 대시보드 오전/오후 분리 SVG 렌더링
- * focus-chart-am / focus-chart-pm 각각에 그림
+ * drawFocusChart — 대시보드 오전/오후 분리 SVG를 렌더링하고 피드백을 생성합니다.
  */
 function drawFocusChart() {
-  const nowDate  = new Date();
-  const todayStr = `${nowDate.getFullYear()}-${String(nowDate.getMonth()+1).padStart(2,'0')}-${String(nowDate.getDate()).padStart(2,'0')}`;
-  // sessDate 없으면(=오늘 수업) 오늘로 간주 → 차트 렌더링
-  const sessDate = selectedSession?.date || todayStr;
-  const isPast   = sessDate < todayStr;
-  const isFuture = sessDate > todayStr;
-  // 과거 날짜 or 미래 날짜 → 빈 차트
-  if (isPast || isFuture) {
-    const msgText = isFuture ? '수업 예정일 — 데이터 없음' : '해당 날짜의 차트 데이터가 없습니다';
-    ['focus-chart-am','focus-chart-pm'].forEach(id => {
-      const svg = document.getElementById(id);
-      if (svg) svg.innerHTML = `<text x="230" y="90" fill="#d1d5db" font-size="13" text-anchor="middle" font-family="Pretendard,sans-serif">${msgText}</text>`;
-    });
-    const badge = document.getElementById('dashboard-ampm-badge');
-    if (badge) badge.innerHTML = '';
-    return;
-  }
+  // 1. 필요한 상태값 및 변수 정의 (isEnded 추가)
+  const isEnded = (typeof _monitorIsLive !== 'undefined') ? !_monitorIsLive : true; 
+
+  const amSvg = document.getElementById('focus-chart-am');
+  const pmSvg = document.getElementById('focus-chart-pm');
+  const badgeEl = document.getElementById('dashboard-ampm-badge');
+
+  if (amSvg) amSvg.innerHTML = '';
+  if (pmSvg) pmSvg.innerHTML = '';
 
   const allData = buildChartData();
-  const amData  = allData.filter(d => parseInt(d.time) < 12);
-  const pmData  = allData.filter(d => parseInt(d.time) >= 13);
+  if (!allData.length) return;
+
+  const amData = allData.filter(d => parseInt(d.time) < 12);
+  const pmData = allData.filter(d => parseInt(d.time) >= 13);
   const nowHour = new Date().getHours();
 
-  // 오전 차트
-  _drawSplitChart('focus-chart-am', amData, '#6366f1', 'focusGradAM', '#FF7710', 'sleepGradAM', true);
-  // 오후 차트 — 현재 오전이면 "오후 수업 진행 예정" 텍스트
-  if (nowHour < 12 && Object.keys(realtimeFocusMap).length > 0) {
-    const svg = document.getElementById('focus-chart-pm');
-    if (svg) {
-      svg.innerHTML = svg.innerHTML + `
-        <text x="230" y="90" fill="#d1d5db" font-size="14" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="600">오후 수업 진행 예정</text>
-        <text x="230" y="112" fill="#e5e7eb" font-size="11" text-anchor="middle" font-family="Pretendard,sans-serif">13:00 ~ 17:00</text>`;
+  // 2. 평균 점수 및 차이(diff) 계산 ★이 부분이 빠져서 에러가 났던 겁니다!
+  const amAvg = amData.length ? Math.round(amData.reduce((a, b) => a + b.focus, 0) / amData.length) : 0;
+  const pmAvg = pmData.length ? Math.round(pmData.reduce((a, b) => a + b.focus, 0) / pmData.length) : 0;
+  const diff  = pmAvg - amAvg; // 오전/오후 점수 차이 계산
+
+  // 3. 차트 그리기 실행
+  _drawSplitChart('focus-chart-am', amData, '#6366f1', 'focusGradAM', '#FF7710', 'sleepGradAM');
+
+  if (nowHour < 12 && !isEnded && Object.keys(realtimeFocusMap).length > 0) {
+    if (pmSvg) {
+      pmSvg.innerHTML = `<text x="230" y="90" fill="#d1d5db" font-size="14" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="600">오후 수업 진행 예정</text>`;
     }
   } else {
-    _drawSplitChart('focus-chart-pm', pmData, '#6366f1', 'focusGradPM', '#FF7710', 'sleepGradPM', true);
+    _drawSplitChart('focus-chart-pm', pmData, '#6366f1', 'focusGradPM', '#FF7710', 'sleepGradPM');
   }
 
-  // 진행중 뱃지 (현재 오후 수업 시간이면 표시)
-  const liveBadge = document.getElementById('dashboard-pm-live-badge');
-  if (liveBadge) liveBadge.style.display = (nowHour >= 13 && nowHour < 18 && Object.keys(realtimeFocusMap).length > 0) ? 'inline-block' : 'none';
-
-  // 오전/오후 평균 비교 뱃지
-  const amAvg = amData.length ? Math.round(amData.reduce((a,b)=>a+b.focus,0)/amData.length) : 0;
-  const pmAvg = pmData.length ? Math.round(pmData.reduce((a,b)=>a+b.focus,0)/pmData.length) : 0;
-  const diff  = pmAvg - amAvg;
-  const badgeEl = document.getElementById('dashboard-ampm-badge');
+  // drawFocusChart 함수 내부의 if (badgeEl) 블록 교체
+// drawFocusChart 함수 내부의 if (badgeEl) 블록 교체
   if (badgeEl) {
+    // 1. 오전 데이터 분석
+    let amTitle = amAvg >= 80 ? "오전 몰입도 우수" : "오전 예열 단계";
+    let amAnalysis = amAvg >= 80 ? "수업 초반 높은 각성도를 유지하며 이론 내용을 원활하게 수용하고 있습니다." : "학습 동기 부여가 필요한 단계이며, 전반적인 각성 속도가 완만합니다.";
+    let amGuide = amAvg >= 80 ? "현재의 높은 몰입도를 활용해 핵심 개념이나 신규 이론을 집중 전달하세요." : "가벼운 아이스브레이킹이나 퀴즈를 통해 수강생의 참여 의지를 높여주세요.";
+
+    // 2. 오후 데이터 분석
+    let pmTitle = "안정적 유지";
+    let pmAnalysis = "이론 내용을 원활하게 소화 중이며 전반적인 몰입도가 양호합니다.";
+    let pmGuide = "현재 템포를 유지하며 예정된 커리큘럼을 진행하세요.";
+    let pmColor = "#ea580c"; 
+    let pmBg = "#fff7ed";
+
+    if (pmAvg >= 85) {
+      pmTitle = "최상의 몰입도";
+      pmAnalysis = "학습 의지가 매우 높고 코드 이해도가 높은 상태입니다.";
+      pmGuide = "심화 개념 전달이나 난이도 있는 챌린지 과제 부여를 추천합니다.";
+      pmColor = "#10b981"; pmBg = "#f0fdf4";
+    } 
+    else if (pmAvg < 55) {
+      pmTitle = "집중도 저하 감지";
+      pmAnalysis = "장시간 이론 수업으로 인해 인지 부하가 한계에 도달했습니다.";
+      pmGuide = "이론 중단 후 즉시 실무 중심의 Live Coding으로 전환하세요.";
+      pmColor = "#ef4444"; pmBg = "#fef2f2";
+    } 
+    else if (diff <= -15) {
+      pmTitle = "오후 슬럼프 진입";
+      pmAnalysis = "점심 식사 이후 각성도가 낮아져 단순 시청형 학습이 어렵습니다.";
+      pmGuide = "5~10분 휴식 후 페어 프로그래밍 등 참여형 학습을 유도하세요.";
+      pmColor = "#f97316"; pmBg = "#fff7ed";
+    }
+
+    // 레이아웃 스타일 설정
+    badgeEl.style.display = "flex";
+    badgeEl.style.gap = "16px";
+    badgeEl.style.marginTop = "16px";
+
     badgeEl.innerHTML = `
-      <div class="ampm-badge am" style="flex:1;padding:10px 14px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;display:flex;align-items:center;justify-content:space-between;">
-        <div><div style="font-size:11px;font-weight:700;color:#6b7280;">☀️ 오전 평균</div><div style="font-size:20px;font-weight:900;color:#2563eb;">${amAvg}%</div></div>
-        <div style="font-size:11px;font-weight:600;color:${diff>=0?'#059669':'#dc2626'};">${diff>=0?'오후 대비 +':'오후 대비 '}${Math.abs(diff)}%p</div>
+      <div style="flex: 1; padding: 16px; border-radius: 12px; background: #eff6ff; border: 1px solid #bfdbfe; display: flex; justify-content: space-between; align-items: center;">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+          <div style="font-size: 11px; font-weight: 800; color: #1e40af; margin-bottom: 2px;">☀️ ${amTitle}</div>
+          <div style="font-size: 11px; color: #1e40af; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            <strong>[분석]</strong> ${amAnalysis}
+          </div>
+          <div style="font-size: 11px; color: #1e40af; line-height: 1.4;">
+            <strong>[가이드]</strong> ${amGuide}
+          </div>
+        </div>
+        <div style="margin-left: 16px; text-align: right; flex-shrink: 0;">
+          <div style="font-size: 10px; font-weight: 700; color: #60a5fa;">오전 평균</div>
+          <div style="font-size: 26px; font-weight: 900; color: #1e40af; line-height: 1;">${amAvg}%</div>
+        </div>
       </div>
-      <div class="ampm-badge pm" style="flex:1;padding:10px 14px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;display:flex;align-items:center;justify-content:space-between;">
-        <div><div style="font-size:11px;font-weight:700;color:#6b7280;">🌆 오후 평균</div><div style="font-size:20px;font-weight:900;color:#ea580c;">${pmAvg}%</div></div>
-        <div style="font-size:11px;font-weight:600;color:${diff<=0?'#dc2626':'#059669'};">${diff<=0?'⚠️ 오전 대비 하락':'✅ 오전 대비 상승'}</div>
+
+      <div style="flex: 1; padding: 16px; border-radius: 12px; background: ${pmBg}; border: 1px solid ${pmColor}33; display: flex; justify-content: space-between; align-items: center;">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+          <div style="font-size: 11px; font-weight: 800; color: ${pmColor}; margin-bottom: 2px;">🌆 ${pmTitle}</div>
+          <div style="font-size: 11px; color: #f97316; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            <strong>[분석]</strong> ${pmAnalysis}
+          </div>
+          <div style="font-size: 11px; color: #f97316; line-height: 1.4;">
+            <strong>[가이드]</strong> <span style="color: ${pmColor}; font-weight: 700;">${pmGuide}</span>
+          </div>
+        </div>
+        <div style="margin-left: 16px; text-align: right; flex-shrink: 0;">
+          <div style="font-size: 10px; font-weight: 700; color: ${pmColor}; opacity: 0.7;">오후 평균</div>
+          <div style="font-size: 26px; font-weight: 900; color: ${pmColor}; line-height: 1;">${pmAvg}%</div>
+          <div style="font-size: 10px; font-weight: 700; color: ${pmColor}; margin-top: 2px;">변동: ${Math.abs(diff)}%p</div>
+        </div>
       </div>`;
   }
 }
-
 /**
- * _drawSplitChart — 오전 또는 오후 단일 구간 차트 공통 함수
+ * _drawSplitChart — 선과 영역을 실제 SVG로 렌더링합니다.
  */
-function _drawSplitChart(svgId, data, focusColor, focusGrad, sleepColor, sleepGrad, showDots) {
+function _drawSplitChart(svgId, data, focusColor, focusGrad, sleepColor, sleepGrad) {
   const svg = document.getElementById(svgId);
   if (!svg || !data.length) return;
-  const W=460, H=180, PX=38, PY=18;
+
+  const W = 460, H = 180, PX = 38, PY = 20;
   const n = data.length;
-  const getX = i => PX + i * ((W-PX*2) / Math.max(n-1,1));
-  const getY = v => H - PY - (v/100)*(H-PY*2);
-  let h = '';
-  [0,25,50,75,100].forEach(v => {
+  const getX = i => PX + i * ((W - PX * 2) / Math.max(n - 1, 1));
+  const getY = v => H - PY - (v / 100) * (H - PY * 2);
+
+  // 1. 배경 그라디언트 정의 (선이 안 보일 때를 대비해 인라인 정의)
+  let h = `<defs>
+    <linearGradient id="${focusGrad}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${focusColor}" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="${focusColor}" stop-opacity="0"/>
+    </linearGradient>
+  </defs>`;
+
+  // 2. 그리드 및 라벨
+  [0, 50, 100].forEach(v => {
     const y = getY(v);
-    h += `<line x1="${PX}" y1="${y}" x2="${W-PX}" y2="${y}" stroke="#f0f0f0" stroke-dasharray="3 3" stroke-width="1"/>`;
-    h += `<text x="${PX-6}" y="${y+4}" fill="#d1d5db" font-size="10" text-anchor="end" font-family="Pretendard,sans-serif">${v}%</text>`;
+    h += `<line x1="${PX}" y1="${y}" x2="${W - PX}" y2="${y}" stroke="#f0f0f0" stroke-width="1" stroke-dasharray="3,3"/>`;
+    h += `<text x="${PX - 8}" y="${y + 4}" fill="#d1d5db" font-size="10" text-anchor="end">${v}%</text>`;
   });
+
   data.forEach((d, i) => {
-    h += `<text x="${getX(i)}" y="${H-2}" fill="#b0b7c3" font-size="10" text-anchor="middle" font-family="Pretendard,sans-serif">${d.time}</text>`;
+    h += `<text x="${getX(i)}" y="${H - 4}" fill="#b0b7c3" font-size="10" text-anchor="middle">${d.time}</text>`;
   });
-  // 집중도 선
-  const lp = data.map((d,i)=>`${i===0?'M':'L'} ${getX(i)} ${getY(d.focus)}`).join(' ');
-  const ap = `${lp} L ${getX(n-1)} ${H-PY} L ${getX(0)} ${H-PY} Z`;
+
+  // 3. 집중도 영역 및 선
+  const lp = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.focus)}`).join(' ');
+  const ap = `${lp} L ${getX(n - 1)} ${H - PY} L ${getX(0)} ${H - PY} Z`;
   h += `<path d="${ap}" fill="url(#${focusGrad})"/>`;
-  h += `<path d="${lp}" fill="none" stroke="${focusColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
-  if (showDots) data.forEach((d,i) => {
-    const isRealtime = !!realtimeFocusMap[d.time];
-    h += `<circle cx="${getX(i)}" cy="${getY(d.focus)}" r="${isRealtime?6:4.5}" fill="${isRealtime?focusColor:'#fff'}" stroke="${focusColor}" stroke-width="2"/>`;
-    if (isRealtime) h += `<text x="${getX(i)}" y="${getY(d.focus)-10}" fill="${focusColor}" font-size="9" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="700">NOW</text>`;
+  h += `<path d="${lp}" fill="none" stroke="${focusColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+  // 4. 졸음 빈도 선 (오렌지)
+  const slp = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.sleep)}`).join(' ');
+  h += `<path d="${slp}" fill="none" stroke="${sleepColor}" stroke-width="2.5" stroke-dasharray="4,2" stroke-linecap="round"/>`;
+
+  // 5. 포인트 점들
+  data.forEach((d, i) => {
+    h += `<circle cx="${getX(i)}" cy="${getY(d.focus)}" r="4" fill="#fff" stroke="${focusColor}" stroke-width="2"/>`;
+    if (d.sleep > 0) {
+      h += `<circle cx="${getX(i)}" cy="${getY(d.sleep)}" r="4" fill="#fff" stroke="${sleepColor}" stroke-width="2"/>`;
+    }
   });
-  // 졸음 빈도 선
-  const slp = data.map((d,i)=>`${i===0?'M':'L'} ${getX(i)} ${getY(d.sleep)}`).join(' ');
-  h += `<path d="${slp}" fill="none" stroke="${sleepColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
-  data.forEach((d,i) => { h += `<circle cx="${getX(i)}" cy="${getY(d.sleep)}" r="3.5" fill="#fff" stroke="${sleepColor}" stroke-width="1.8"/>`; });
-  svg.innerHTML = svg.innerHTML + h;
+
+  svg.innerHTML = h; // 비우고 새로 넣기
 }
 
 /**
@@ -2701,19 +2804,47 @@ function openPdfPreview() {
   const courseName  = selectedCourse || '전체';
   const today       = new Date();
   const dateStr     = `${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}.`;
+  // PDF 기간 필터 반영
+  const period = document.getElementById('report-period-select')?.value || 'last_1_week';
+  const PERIOD_LABEL = { last_1_week:'최근 1주일', last_1_month:'최근 1개월', all_term:'과정 전체 누적' };
+  const periodLabel = PERIOD_LABEL[period] || '최근 1주일';
+  const useDummy = USE_DUMMY_TREND && (period === 'last_1_month' || period === 'all_term');
+
+  // 기간별 더미 통계
+  const DUMMY_STATS = {
+    last_1_month: { att:'93.7%', focus:78, drowsy:47, absent:3 },
+    all_term:     { att:'91.2%', focus:75, drowsy:128, absent:5 },
+  };
+  const ds = useDummy ? DUMMY_STATS[period] : null;
+
   const total       = currentSessions.length;
-  const avgFocus    = total > 0 ? Math.round(currentSessions.reduce((a,s)=>a+(s.avg_focus||0),0)/total) : 0;
-  const totalDrowsy = currentSessions.reduce((a,s)=>a+(s.drowsy_count||0),0);
+  const avgFocus    = ds ? ds.focus : (total > 0 ? Math.round(currentSessions.reduce((a,s)=>a+(s.avg_focus||0),0)/total) : 0);
+  const totalDrowsy = ds ? ds.drowsy : currentSessions.reduce((a,s)=>a+(s.drowsy_count||0),0);
   const totalStudents = currentSessions.reduce((a,s)=>a+(s.student_count||0),0);
   const totalAbsent   = currentSessions.reduce((a,s)=>a+(s.absent_count||0),0);
-  const absentRate    = totalStudents > 0 ? Math.round(totalAbsent/totalStudents*100) : 0;
+  const absentRate    = ds ? ds.absent : (totalStudents > 0 ? Math.round(totalAbsent/totalStudents*100) : 0);
+  const attendanceVal = ds ? ds.att : '93.7%';
 
-  // 오전/오후 집중도 (buildChartData 기반)
-  const allData   = buildChartData();
-  const amData    = allData.filter(d => parseInt(d.time) < 12);
-  const pmData    = allData.filter(d => parseInt(d.time) >= 13);
-  const amAvg     = amData.length ? Math.round(amData.reduce((a,b)=>a+b.focus,0)/amData.length) : 0;
-  const pmAvg     = pmData.length ? Math.round(pmData.reduce((a,b)=>a+b.focus,0)/pmData.length) : 0;
+  // 오전/오후 집중도 — 기간별 데이터 (종합 리포트 화면과 동일)
+  const DUMMY_AMPM = {
+    last_1_week:  {
+      am: [{time:'09:00',focus:84},{time:'10:00',focus:88},{time:'11:00',focus:80}],
+      pm: [{time:'13:00',focus:76},{time:'14:00',focus:79},{time:'15:00',focus:73},{time:'16:00',focus:77},{time:'17:00',focus:71}],
+    },
+    last_1_month: {
+      am: [{time:'09:00',focus:84},{time:'10:00',focus:88},{time:'11:00',focus:80}],
+      pm: [{time:'13:00',focus:73},{time:'14:00',focus:77},{time:'15:00',focus:71},{time:'16:00',focus:75},{time:'17:00',focus:70}],
+    },
+    all_term: {
+      am: [{time:'09:00',focus:81},{time:'10:00',focus:85},{time:'11:00',focus:77}],
+      pm: [{time:'13:00',focus:68},{time:'14:00',focus:73},{time:'15:00',focus:69},{time:'16:00',focus:72},{time:'17:00',focus:66}],
+    },
+  };
+  const pdfAmPm = DUMMY_AMPM[period] || DUMMY_AMPM['last_1_week'];
+  const amData  = pdfAmPm.am;
+  const pmData  = pdfAmPm.pm;
+  const amAvg   = Math.round(amData.reduce((a,b)=>a+b.focus,0)/amData.length);
+  const pmAvg   = Math.round(pmData.reduce((a,b)=>a+b.focus,0)/pmData.length);
   const amPmDiff  = pmAvg - amAvg;
   const fColor    = c => c >= 70 ? '#059669' : c >= 50 ? '#d97706' : '#dc2626';
 
@@ -2754,14 +2885,26 @@ function openPdfPreview() {
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;" preserveAspectRatio="none">${h}</svg>`;
   }
 
-  // 기간별 추이 SVG
+  // 기간별 추이 SVG — 종합 리포트 화면 drawTrendChart()와 동일한 데이터 사용
   function makeTrendSvg() {
-    const labels = currentSessions.length >= 2
-      ? [...currentSessions].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(-8).map((s,i)=>`${i+1}회`)
-      : ['1주','2주','3주','4주','5주','6주','7주','8주'];
-    const values = currentSessions.length >= 2
-      ? [...currentSessions].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(-8).map(s=>s.avg_focus||0)
-      : [82,78,71,65,70,75,73,77];
+    // 기간별 더미 데이터 (drawTrendChart와 동일)
+    const TREND_DUMMY = {
+      last_1_week:  { labels: ['1회','2회','3회','4회','5회','6회','7회'], values: [82,78,75,80,72,76,79] },
+      last_1_month: { labels: ['1주차','2주차','3주차','4주차'], values: [82,75,70,78] },
+      all_term:     { labels: ['1개월','2개월','3개월','4개월','5개월','6개월'], values: [72,78,74,80,76,83] },
+    };
+    let labels, values;
+    if (useDummy || period !== 'last_1_week') {
+      const d = TREND_DUMMY[period] || TREND_DUMMY['last_1_week'];
+      labels = d.labels; values = d.values;
+    } else if (currentSessions.length >= 2) {
+      const sorted = [...currentSessions].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).slice(-7);
+      labels = sorted.map((_,i)=>`${i+1}회`);
+      values = sorted.map(s=>s.avg_focus||0);
+    } else {
+      labels = TREND_DUMMY['last_1_week'].labels;
+      values = TREND_DUMMY['last_1_week'].values;
+    }
     const W=580,H=100,PX=24,PY=12;
     const n=labels.length;
     const getX = i => PX + i*((W-PX*2)/Math.max(n-1,1));
@@ -2788,7 +2931,7 @@ function openPdfPreview() {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #FF7710;padding-bottom:16px;margin-bottom:20px;">
       <div>
         <div style="font-size:20px;font-weight:900;color:#111827;margin-bottom:4px;">교육 성취도 종합 리포트</div>
-        <div style="font-size:13px;font-weight:600;color:#6b7280;">${courseName}</div>
+        <div style="font-size:13px;font-weight:600;color:#6b7280;">${courseName} · ${periodLabel}</div>
       </div>
       <div style="text-align:right;">
         <div style="color:#FF7710;font-weight:800;font-size:14px;">🦁 LIKELION</div>
@@ -2800,7 +2943,7 @@ function openPdfPreview() {
     <div style="margin-bottom:18px;">
       <div style="font-size:12px;font-weight:700;color:#111827;border-left:4px solid #FF7710;padding-left:8px;margin-bottom:10px;">1. 기간 내 요약 지표</div>
       <div style="display:flex;gap:8px;">
-        ${[['✅ 평균 출석률','#059669','93.7%'],['📊 평균 집중도','#FF7710',avgFocus+'%'],['😴 졸음 확정',totalDrowsy>5?'#dc2626':'#d97706',totalDrowsy+'건'],['🚶 자리 이탈률',absentRate>15?'#dc2626':'#d97706',absentRate+'%']].map(([l,c,v])=>`
+        ${[['✅ 평균 출석률','#059669',attendanceVal],['📊 평균 집중도','#FF7710',avgFocus+'%'],['😴 졸음 확정',totalDrowsy>5?'#dc2626':'#d97706',totalDrowsy+'건'],['🚶 자리 이탈률',absentRate>15?'#dc2626':'#d97706',absentRate+'%']].map(([l,c,v])=>`
         <div style="flex:1;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;text-align:center;">
           <div style="font-size:9px;color:#6b7280;margin-bottom:4px;">${l}</div>
           <div style="font-size:20px;font-weight:800;color:${c};">${v}</div>
