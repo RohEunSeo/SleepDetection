@@ -2433,6 +2433,61 @@ function drawTrendChart() {
   renderTrendInsight(trendData);
 }
 
+// ── 종합 리포트 시간대별 집중도 차트 ─────────────────
+function drawReportChart() {
+  const period = document.getElementById('report-period-select')?.value || 'last_1_week';
+
+  const DUMMY_AMPM = {
+    last_1_week: {
+      am: [{ time:'09:00', focus:72 },{ time:'10:00', focus:81 },{ time:'11:00', focus:76 }],
+      pm: [{ time:'13:00', focus:65 },{ time:'14:00', focus:70 },{ time:'15:00', focus:78 },{ time:'16:00', focus:74 },{ time:'17:00', focus:79 }],
+    },
+    last_1_month: {
+      am: [{ time:'09:00', focus:84 },{ time:'10:00', focus:88 },{ time:'11:00', focus:80 }],
+      pm: [{ time:'13:00', focus:73 },{ time:'14:00', focus:77 },{ time:'15:00', focus:71 },{ time:'16:00', focus:75 },{ time:'17:00', focus:70 }],
+    },
+    all_term: {
+      am: [{ time:'09:00', focus:81 },{ time:'10:00', focus:85 },{ time:'11:00', focus:77 }],
+      pm: [{ time:'13:00', focus:68 },{ time:'14:00', focus:73 },{ time:'15:00', focus:69 },{ time:'16:00', focus:72 },{ time:'17:00', focus:66 }],
+    },
+  };
+
+  const amData = (DUMMY_AMPM[period] || DUMMY_AMPM['last_1_week']).am;
+  const pmData = (DUMMY_AMPM[period] || DUMMY_AMPM['last_1_week']).pm;
+
+  const svgAM = document.getElementById('report-chart-am');
+  if (svgAM) {
+    svgAM.innerHTML = `<defs>
+      <linearGradient id="reportGradAM" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="reportSleepAM" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#ef4444" stop-opacity="0.10"/>
+        <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+      </linearGradient>
+    </defs>`;
+    _drawSplitChart('report-chart-am', amData, '#FF7710', 'reportGradAM', '#ef4444', 'reportSleepAM');
+  }
+
+  const svgPM = document.getElementById('report-chart-pm');
+  if (svgPM) {
+    svgPM.innerHTML = `<defs>
+      <linearGradient id="reportGradPM" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#FF7B00" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="#FF7B00" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="reportSleepPM" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#ef4444" stop-opacity="0.10"/>
+        <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+      </linearGradient>
+    </defs>`;
+    _drawSplitChart('report-chart-pm', pmData, '#FF7710', 'reportGradPM', '#ef4444', 'reportSleepPM');
+  }
+
+  renderAmPmInsight([...amData, ...pmData]);
+}
+
 /** 오전/오후 집중도 비교 인사이트 뱃지 */
 function renderAmPmInsight(data) {
   const el = document.getElementById('report-ampm-insight');
@@ -2539,9 +2594,8 @@ async function loadSessions(courseName) {
 function renderReportStats() {
   const period = document.getElementById('report-period-select')?.value || 'last_1_week';
 
-  // 최근 1주일: 실제 데이터 사용
-  // 최근 1개월 / 과정 전체: USE_DUMMY_TREND=true면 더미 고정
-  const useDummy = USE_DUMMY_TREND && (period === 'last_1_month' || period === 'all_term');
+  // 모든 기간: USE_DUMMY_TREND=true면 더미 고정
+  const useDummy = USE_DUMMY_TREND;
 
   const total         = currentSessions.length;
   const avgFocus      = total > 0 ? Math.round(currentSessions.reduce((a,s)=>a+(s.avg_focus||0),0)/total) : 0;
@@ -2552,6 +2606,7 @@ function renderReportStats() {
 
   // 기간별 더미 값
   const DUMMY_BY_PERIOD = {
+    last_1_week:  { att:'96.3%', focus:'76%', drowsy:12, absent:2 },
     last_1_month: { att:'93.7%', focus:'78%', drowsy:47, absent:3 },
     all_term:     { att:'91.2%', focus:'75%', drowsy:128, absent:5 },
   };
