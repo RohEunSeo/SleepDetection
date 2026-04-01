@@ -78,34 +78,73 @@ body {
 .brand-side {
   flex: 1;
   animation: fadeUp 0.6s ease both;
+  margin-top: -40px;
 }
 
 .brand-logo {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 32px;
+  gap: 5px;
+  margin-bottom: 10px;
 }
 
 .brand-logo-img {
-  width: 48px;
-  height: 48px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
 }
 
 .brand-logo-text {
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--orange-600);
   letter-spacing: 0.02em;
 }
 
+/* 수정 후 */
+.brand-tagline {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-secondary);   /* 기본 색 다시 추가 */
+  margin-bottom: 0px;
+  letter-spacing: 0.01em;
+  /* gradient 관련 3줄 전부 삭제 */
+}
+.brand-headline .highlight,
+.brand-tagline .highlight {
+  background: linear-gradient(135deg, #FF7B00, #FFB347);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 .brand-headline {
-  font-size: 42px;
-  font-weight: 800;
-  line-height: 1.15;
-  margin-bottom: 16px;
-  letter-spacing: -0.02em;
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 1.05;
+  margin-bottom: 20px;
+  letter-spacing: -0.03em;
+  color: rgba(255, 255, 255, 0.95);   /* ← 이거 추가 */
+}
+
+.brand-side {
+  position: relative;
+}
+
+.brand-bg-logo {
+  position: absolute;
+  top: 46%;
+  left: -60px;
+  transform: translateY(-50%);
+  width: 480px;
+  height: 480px;
+  background-image: url('../assets/images/logo-3.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.25;                          /* 0.07 → 0.25 */
+  filter: blur(2.5px) saturate(2);          /* blur 살짝 더 + 채도 올림 */
+  pointer-events: none;
+  z-index: 0;
 }
 
 .brand-headline .highlight {
@@ -382,4 +421,10 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.brand-logo-img-wide {
+  height: 13px;
+  width: auto;
+  object-fit: contain;
 }
