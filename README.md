@@ -68,10 +68,14 @@ SleepDetection/
 
 ## How to Run
 1. Backend
+```
 cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload
+```
 
-2. Frontend
+3. Frontend
+```
 cd frontend
 python -m http.server 5500
+```
