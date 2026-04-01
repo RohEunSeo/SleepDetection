@@ -2224,7 +2224,7 @@ function drawFocusChart() {
 
   // drawFocusChart 함수 내부의 if (badgeEl) 블록 교체
 // drawFocusChart 함수 내부의 if (badgeEl) 블록 교체
-  if (badgeEl) {
+  if (badgeEl && isEnded) {
     // 1. 오전 데이터 분석
     let amTitle = amAvg >= 80 ? "오전 몰입도 우수" : "오전 예열 단계";
     let amAnalysis = amAvg >= 80 ? "수업 초반 높은 각성도를 유지하며 이론 내용을 원활하게 수용하고 있습니다." : "학습 동기 부여가 필요한 단계이며, 전반적인 각성 속도가 완만합니다.";
